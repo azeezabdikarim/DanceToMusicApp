@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload your video</title>
+    <!-- Main CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <!-- Bootstrap Bundle includes Popper.js -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container text-center">
+        <h1 class="my-4">Upload a 5-second video</h1>
+        <form method="post" action="/" enctype="multipart/form-data" class="my-4">
+            <div class="custom-file my-4">
+                <input type="file" name="file" class="custom-file-input" id="customFile" accept="video/*" onchange="updateLabel()">
+                <label class="custom-file-label" for="customFile">Choose file</label>
+            </div>
+            <button type="submit" class="btn btn-upload">Upload</button>
+        </form>
+    </div>
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function updateLabel() {
+            var input = document.getElementById('customFile');
+            if (input.files.length > 0) {
+                var label = input.nextElementSibling;
+                label.textContent = input.files[0].name; // Updating the label with the file name
+            }
+        }
+    </script>
+</body>
+</html>

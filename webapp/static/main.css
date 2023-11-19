@@ -1,0 +1,55 @@
+/* Overall body styling */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #e0ffff; /* Light Cyan, reminiscent of minty blue */
+    color: #28587B; /* Darker blue for text */
+    margin: 0;
+    padding-top: 20px;
+}
+
+/* Centering content with some padding */
+.container {
+    padding: 2rem;
+}
+
+/* Styling for the custom file input and upload button */
+.custom-file-input {
+    width: 30%; /* Shrinking the file browser */
+    margin: auto;
+}
+
+.custom-file-label {
+    text-overflow: ellipsis; /* Preventing long file names from breaking the layout */
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* Enhance the upload button with minty blue shades */
+.btn-upload, .btn-download {
+    padding: .75rem 2rem; /* Larger button for upload and download */
+    font-size: 1.25rem;
+    background-color: #8ddfd3; /* A minty blue shade for buttons */
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out;
+    border-radius: 4px;
+}
+
+.btn-upload:hover, .btn-download:hover {
+    background-color: #5ec2b7; /* A slightly darker minty blue on hover */
+}
+
+/* Video styling */
+video {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px; /* Rounded corners for the video player */
+}
+
+/* Responsive styling */
+@media (max-width: 768px) {
+    .custom-file-input {
+        width: 50%; /* Larger file browser on smaller screens */
+    }
+}

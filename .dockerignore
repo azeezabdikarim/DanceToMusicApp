@@ -1,0 +1,29 @@
+# Python cache:
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.venv/
+
+# Static uploads:
+webapp/static/uploads/
+
+# Machine learning related directories:
+ml/*.pyc
+ml/*.pyo
+ml/*.pyd
+ml/**/__pycache__/
+ml/assets/
+ml/weights/
+ml/data/min_training_data/*
+ml/data/samples/*
+ml/data/
+ml/my_logs/data/test/
+ml/data/test/
+ml/my_logs/
+ml/utils/__pycache__/
+ml/data/building_tools/__pycache__/
+
+webapp/static/uploads/

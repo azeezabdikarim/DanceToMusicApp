@@ -1,0 +1,16 @@
+__pycache__/
+webapp/static/uploads/
+
+ml/__pycache__/
+ml/*.pyc
+ml/*.pyo
+ml/*.pyd
+ml/*/*/__pycache__/*
+ml/weights
+ml/data/min_training_data/
+ml/data/samples/
+ml/my_logs/data/test/
+ml/data/test/
+ml/my_logs/
+ml/utils/__pycache__/
+ml/data/building_tools/__pycache__/
