@@ -1,6 +1,10 @@
 __pycache__/
 webapp/static/uploads/
 
+# virutl env
+venv/
+.venv/
+
 ml/__pycache__/
 ml/*.pyc
 ml/*.pyo

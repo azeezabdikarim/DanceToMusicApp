@@ -17,6 +17,9 @@ COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python
 
 # Copy only the necessary directories and files into the working directory of the webapp
 COPY ./webapp /webapp
+COPY ./ml /ml
+COPY ./processing /processing
+
 
 # Your app will listen on port 5000
 EXPOSE 5000
