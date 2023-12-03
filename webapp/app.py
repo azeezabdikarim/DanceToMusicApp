@@ -1,12 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory
 import os
-import sys
-import werkzeug
 from werkzeug.utils import secure_filename
-
-current_directory = os.getcwd()
-models_dir = os.path.join(current_directory, '..')
-sys.path.append(models_dir)
 
 from processing.video_processor import process_video
 
@@ -52,4 +46,11 @@ def download(filename):
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+# if __name__ == '__main__':
+#     # 'PORT' environment variable is provided by Heroku, default to 5000 for local development
+#     port = int(os.environ.get('PORT', 5000))
+#     # Turn off debug mode in production
+#     app.run(host='0.0.0.0', port=port, debug=False)
+
 
