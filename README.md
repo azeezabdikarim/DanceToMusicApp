@@ -72,9 +72,8 @@ When the codebook is extended to a Residual Vector Quantized (RVQ) Codebook, the
 <!-- ![EnCodec Model Architecture](ml/assets/encodec_architecture.jpg "EnCodec Model Architecture") -->
 <figure style="text-align: center;">
     <img src="ml/assets/encodec_architecture.jpg" width="70%" height="70%" alt="EnCodec Model Architecture">
-    <figcaption>EnCodec Model Architecture</figcaption>
 </figure>
-
+[![Rick Astley - Never Gonna Give You Up](https://img.youtube.com/vi/dQw4w9WgXcQ/0.jpg)](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
 
 ## Dataset
 The dataset used in this projects is a personally aggregated set of dance videos paired with their corresponding music. Each dance clip is processed using MediaPipe's 3D human pose estimation model. Only one human is selected per video clip, for which the model generates a set of 33x3 key points per frame. Videos are standardized in the training set to last 5 sec at 24fps, resulting in a sequence of 120 frames per sample. The final dimensions for an individual sample are therefore 120x33x3. 
