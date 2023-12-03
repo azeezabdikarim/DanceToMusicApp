@@ -70,8 +70,8 @@ Adding a vector quantized codebook to an autoencoder architecture, such as the E
 When the codebook is extended to a Residual Vector Quantized (RVQ) Codebook, the model gains the ability to capture finer details by representing residuals or differences between the input and the current reconstruction at each stage. This layered approach of quantization allows the model to iteratively refine its output, leading to a more precise and higher fidelity reconstruction than what could be achieved with a standard Vector Quantized Codebook.
 
 <!-- ![EnCodec Model Architecture](ml/assets/encodec_architecture.jpg "EnCodec Model Architecture") -->
-<figure>
-    <img src="ml/assets/encodec_architecture.jpg" width="50%" height="50%" alt="EnCodec Model Architecture">
+<figure style="text-align: center;">
+    <img src="ml/assets/encodec_architecture.jpg" width="70%" height="70%" alt="EnCodec Model Architecture">
     <figcaption>EnCodec Model Architecture</figcaption>
 </figure>
 
