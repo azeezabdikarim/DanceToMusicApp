@@ -2,12 +2,14 @@ from download_database_split_seq_pytube import *
 from standardize_fps_sr_youtube import *
 from pose_extraction_media_pipe import *
 from copy_min_training_data import *
+from seperate_vocals import *
 import csv
 import os
 
 
 # DanceToMusic/data/youtube_links/youtube_links_test.csv --output_path /home/azeez/azeez_exd/misc/DanceToMusic/data/buildinpython /home/azeez/azeez_exd/misc/DanceToMusic/data/building_tools/build_complete_dataset.py --input_csv /home/azeez/azeez_exd/misc/g_tools
 # python /Users/azeez/Documents/pose_estimation/DanceToMusic/data/building_tools/build_complete_dataset.py --output_path /Users/azeez/Documents/pose_estimation/DanceToMusic/data/samples/5sec_expando_dataset --input_csv /Users/azeez/Documents/pose_estimation/DanceToMusic/data/youtube_links/youtube_links.csv  --max_seq_len 5 --fps 24
+# python /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/building_dataset_tools/build_complete_dataset.py --output_path /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_test --input_csv /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/youtube_links/youtube_links_test.csv  --max_seq_len 5 --fps 24
 def download_and_clip_videos(input_csv, output_path, max_seq_len):    
     if output_path.rfind('/') != len(output_path)-1:
         output_path = output_path + '/'
@@ -32,6 +34,14 @@ def standardize_samples(output_path, fps, audio_sr):
 
     for video in tqdm(videos_path, desc="Standardizing videos..."):
         standardize_data(video, fps, audio_sr)
+
+def extractInstrumental(data_dir, sr = 24000, mp_pose=None):
+    directory = data_dir
+
+    for root, dirs, files in os.walk(directory):
+        for d in dirs:
+            wav_path = os.path.join(root, d, f"{d[:-7]}.wav")
+            extractDrumNBass(wav_path, sr=sr)
 
 def extract_poses(data_dir, fps):
     # Initialize MediaPipe Pose component
@@ -91,11 +101,11 @@ def main():
     print("Step 2: Standardizing outputs...")
     standardize_samples(args.output_path, args.fps, args.audio_sr)
 
-    # # Step 3: Extract poses
+    # Step 3: Extract poses
     print("Step 3: Extracting poses...")
     extract_poses(args.output_path, args.fps)
 
-    # # # Step 4: Save Minimum Data For Training
+    # Step 4: Save Minimum Data For Training
     print("Step 4: Saving minimum data for training...")
     min_data_out_path = '/' + os.path.join(*args.output_path.split('/'))+'_min_training_data'
     save_min_data_for_training(args.output_path, min_data_out_path)

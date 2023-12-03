@@ -1,0 +1,22 @@
+Creat the docker build:
+ - Simple build  
+        docker build -t registry.heroku.com/dance2music/web .
+    - Build to convert from m2 to the heroku container
+        docker build --platform linux/amd64 -t registry.heroku.com/dance2music/web .
+
+View the Images you have created:
+    docker images
+
+Login to Heroku:
+    heroku Login
+
+
+Push the Docker Image to Heroku:
+    docker push registry.heroku.com/dance2music/web
+
+Release the Heroku Containe (make it og live?):
+    heroku container:release web -a dance2music
+
+Access the Heorku Container. Allows you to LS and CD around the environment
+    heroku run bash -a dance2music
+

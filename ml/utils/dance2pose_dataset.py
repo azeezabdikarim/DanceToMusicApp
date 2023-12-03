@@ -9,9 +9,9 @@ from torch.utils.data import DataLoader, Dataset
 
 
 class DanceToMusic(Dataset):
-    def __init__(self, directory, encoder = None, sample_rate=24000, device = torch.device("cpu"), num_samples = None):
+    def __init__(self, directory, encoder = None, sample_rate=24000, device = torch.device("cpu"), num_samples = None, dnb=False):
         self.device = device
-        self.raw_data = self._load_data(directory, sample_rate, num_samples)
+        self.raw_data = self._load_data(directory, sample_rate, num_samples, dnb)
         self.data = self._buildData(self.raw_data)
         self.encoder = encoder
         if encoder is not None:
@@ -34,7 +34,7 @@ class DanceToMusic(Dataset):
         audio_codes = self.data['audio_codes'][idx]
         return [audio_codes, pose, pose_mask, wav, wav_mask, wav_path, sample_rate]
 
-    def _load_data(self, directory, sr, num_samples):
+    def _load_data(self, directory, sr, num_samples, dnb):
         poses = []
         wavs = []
         wav_paths = []
@@ -44,7 +44,10 @@ class DanceToMusic(Dataset):
             for d in dirs:
                 if 'error' not in d:
                     pose_path = os.path.join(root, d, f"{root.split('/')[-1]}_{d[:-7]}_3D_landmarks.npy")
-                    wav_path = os.path.join(root, d, f"{d[:-7]}.wav")
+                    if dnb:
+                        wav_path = os.path.join(root, d, f"{d[:-7]}_drum_and_bass.wav")
+                    else:
+                        wav_path = os.path.join(root, d, f"{d[:-7]}.wav")
 
                     # poses.append(self._buildPoses(pose_dir_path))
                     poses.append(np.load(pose_path))

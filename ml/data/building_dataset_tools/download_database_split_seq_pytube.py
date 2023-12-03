@@ -61,7 +61,8 @@ def clip_and_save_video(video_path, audio_path, start_time, end_time, output_pat
     video_clip.audio = final_audio
     
     final_video_path = os.path.join(sample_folder, output_video_name)
-    video_clip.write_videofile(final_video_path, codec="libx264")
+    video_clip.write_videofile(final_video_path, codec="libx264", audio_codec='aac')
+    # video_clip.write_videofile(final_video_path, audio_codec='aac')
 
     final_audio_path = os.path.join(sample_folder, output_video_name.split('.mp4')[0] + '.wav')
     audio_clip.write_audiofile(final_audio_path)

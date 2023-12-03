@@ -44,7 +44,7 @@ if __name__ == "__main__":
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
-    # device = torch.device("cpu")
+    device = torch.device("cpu")
 
 
     model_id = "facebook/encodec_24khz"
@@ -59,8 +59,8 @@ if __name__ == "__main__":
     # data_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusic/data/samples/5sec_min_data'
     # data_dir = "/Users/azeez/Documents/pose_estimation/DanceToMusic/data/min_training_data"
     # data_dir = '/home/azeez/azeez_exd/misc/DanceToMusic/data/samples'
-    data_dir = '/home/azeez/azeez_exd/misc/DanceToMusic/data/5sec_samples/samples'
-    train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device)
+    data_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
+    train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
     embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
 
 
@@ -94,8 +94,8 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(pose_model.parameters(), lr=learning_rate)
 
     # Set up for tracking the best model
-    weights_dir = '/home/azeez/azeez_exd/misc/DanceToMusic/weights'
-    # weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusic/weights'
+    # weights_dir = '/home/azeez/azeez_exd/misc/DanceToMusic/weights'
+    weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
     best_loss = float('inf')  # Initialize with a high value
     last_saved_model = ''
 

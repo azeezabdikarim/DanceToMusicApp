@@ -78,17 +78,17 @@ def saveVideoKeypoints(video_path, pose_model, save_dir, frame_rate = 24, mp_pos
     audio_path = os.path.join(save_dir,f"{video_name}.wav") 
     audio = AudioFileClip(audio_path)
     
-    orig_video = VideoFileClip(video_path)
-    orig_video = orig_video.set_audio(audio)
-    orig_video.write_videofile(video_path)
+    # orig_video = VideoFileClip(video_path)
+    # orig_video = orig_video.set_audio(audio)
+    # orig_video.write_videofile(video_path, codec="libx264", audio_codec='aac')
 
     video = VideoFileClip(color_vid_save_path)
     video = video.set_audio(audio)
-    video.write_videofile(os.path.join(save_dir, f"{video_name}_with_audio.mp4"))
+    video.write_videofile(os.path.join(save_dir, f"{video_name}_with_audio.mp4"), codec="libx264", audio_codec='aac')
 
     video_normalized = VideoFileClip(normalized_vid_save_path)
     video_normalized = video_normalized.set_audio(audio)
-    video_normalized.write_videofile(os.path.join(save_dir, f"{video_name}_normalized_with_audio.mp4"))
+    video_normalized.write_videofile(os.path.join(save_dir, f"{video_name}_normalized_with_audio.mp4"), codec="libx264", audio_codec='aac')
 
 
     # Convert list to a NumPy array of shape [num_frames, num_keypoints, 3]

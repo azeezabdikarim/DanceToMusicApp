@@ -1,31 +1,32 @@
-# Build stage
-FROM python:3.9-slim as builder
-WORKDIR /app
-
-# Copy only the requirements.txt first to leverage Docker cache
-COPY requirements.txt .
-
-# Install packages and dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Final stage
+# Use the Python 3.9 slim image as the base image
 FROM python:3.9-slim
-WORKDIR /webapp
 
-# Copy installed packages from builder stage
-COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+# Set the working directory to the root of your project structure
+WORKDIR /DanceToMusicApp
 
-# Copy only the necessary directories and files into the working directory of the webapp
-COPY ./webapp /webapp
-COPY ./ml /ml
-COPY ./processing /processing
+# Copy the requirements.txt file to the container
+COPY requirements_docker.txt .
+
+# Install necessary system libraries for OpenCV and Python dependencies in one RUN command
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && pip install --no-cache-dir -r requirements_docker.txt \
+    && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
+    && rm -rf /var/lib/apt/lists/*
 
 
-# Your app will listen on port 5000
+# Copy only the webapp directory
+COPY webapp /DanceToMusicApp/webapp
+
+# Set the working directory to the webapp directory where app.py is located
+WORKDIR /DanceToMusicApp/webapp
+
+# Expose the port the app runs on
 EXPOSE 5000
 
-# Environment variables can be set here
+# Set environment variables (if needed)
 ENV NAME World
 
-# Run the command to start the Flask server
-CMD ["python", "app.py"]
+# Use gunicorn to run the Flask app (assuming gunicorn is listed in your requirements.txt)
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
