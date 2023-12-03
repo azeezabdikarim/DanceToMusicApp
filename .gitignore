@@ -25,3 +25,4 @@ Dockerfile
 instructions/*
 older_docker.txt
 requirements_docker.txt
+*/.DS_Store
