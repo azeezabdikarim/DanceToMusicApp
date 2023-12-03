@@ -134,14 +134,15 @@ A new strategy that I am investigating is to train the model using a perceptual 
 ## Credits
 
 EnCodec
-@article{defossez2022highfi,
+'''@article{defossez2022highfi,
   title={High Fidelity Neural Audio Compression},
   author={Défossez, Alexandre and Copet, Jade and Synnaeve, Gabriel and Adi, Yossi},
   journal={arXiv preprint arXiv:2210.13438},
   year={2022}
 }
-
+'''
 Spleeter 
+'''
 @article{spleeter2020,
   doi = {10.21105/joss.02154},
   url = {https://doi.org/10.21105/joss.02154},
@@ -155,5 +156,6 @@ Spleeter
   journal = {Journal of Open Source Software},
   note = {Deezer Research}
 }
+'''
 
 ## License
