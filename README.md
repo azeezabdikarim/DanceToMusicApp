@@ -45,19 +45,19 @@ git clone https://github.com/azeezabdikarim/DanceToMusic.git
 cd DanceToMusic
 
 # It is recommended to create a virtual environment for the project to avoid conflicts with other packages and versions
-python -m venv venv
+python -m .venv venv
 
 # Activate the virtual environment
 # On Windows, use `.\venv\Scripts\activate`
 # On Unix or MacOS, use `source venv/bin/activate`
-source venv/bin/activate
+source .venv/bin/activate
 
 # Install the required packages
 pip install -r requirements.txt
 
 # Build the video dataset, extracting 5 second clips at 24fps
 # FYI: The video downloads might take a while depending on your internet speeds. Also, MediaPipe uses the CPU to calculate human pose estimates, so that will take a decent amount of time. It takes me between 1-2 hours to build the complete dataset of ~1300 clips on a MacBook Pro with an M2 Max chip
-python ml/data/building_tools/build_complete_dataset.py --output_path ml/data/samples/ --input_csv ml/data/youtube_links/youtube_links_test.csv  --max_seq_len 5 --fps 24
+python ml/data/building_tools/build_dnb_dataset.py --output_path ml/data/samples/ --input_csv ml/data/youtube_links/youtube_links_test.csv  --max_seq_len 5 --fps 24
 
 ```
 ## Usage
@@ -69,7 +69,12 @@ Adding a vector quantized codebook to an autoencoder architecture, such as the E
 
 When the codebook is extended to a Residual Vector Quantized (RVQ) Codebook, the model gains the ability to capture finer details by representing residuals or differences between the input and the current reconstruction at each stage. This layered approach of quantization allows the model to iteratively refine its output, leading to a more precise and higher fidelity reconstruction than what could be achieved with a standard Vector Quantized Codebook.
 
-![EnCodec Model Architecture](ml/assets/encodec_architecture.jpg "EnCodec Model Architecture")
+<!-- ![EnCodec Model Architecture](ml/assets/encodec_architecture.jpg "EnCodec Model Architecture") -->
+<figure>
+    <img src="ml/assets/encodec_architecture.jpg" width="50%" height="50%" alt="EnCodec Model Architecture">
+    <figcaption>EnCodec Model Architecture</figcaption>
+</figure>
+
 
 ## Dataset
 The dataset used in this projects is a personally aggregated set of dance videos paired with their corresponding music. Each dance clip is processed using MediaPipe's 3D human pose estimation model. Only one human is selected per video clip, for which the model generates a set of 33x3 key points per frame. Videos are standardized in the training set to last 5 sec at 24fps, resulting in a sequence of 120 frames per sample. The final dimensions for an individual sample are therefore 120x33x3. 
