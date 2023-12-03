@@ -73,14 +73,13 @@ When the codebook is extended to a Residual Vector Quantized (RVQ) Codebook, the
 <figure style="text-align: center;">
     <img src="ml/assets/encodec_architecture.jpg" width="70%" height="70%" alt="EnCodec Model Architecture">
 </figure>
-[![Rick Astley - Never Gonna Give You Up](https://img.youtube.com/vi/dQw4w9WgXcQ/0.jpg)](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
 
 ## Dataset
 The dataset used in this projects is a personally aggregated set of dance videos paired with their corresponding music. Each dance clip is processed using MediaPipe's 3D human pose estimation model. Only one human is selected per video clip, for which the model generates a set of 33x3 key points per frame. Videos are standardized in the training set to last 5 sec at 24fps, resulting in a sequence of 120 frames per sample. The final dimensions for an individual sample are therefore 120x33x3. 
 
 ![Human Pose Estimate of a Single Frame](ml/assets/women_dancing.jpg "Human Pose Estimate Sample")
 
-For each dancing clip, I extracted the audio as a .wav file. I use the '24khz' encoder of the EnCodec audio encoder, to the map the 5 second audio clip to a lower dimensionality latent space. For a 5 second clip, the EnCodec model produces a latent vector of 2x377, which I flattened to 1x754, and use as the target the samples of our dataset. 
+For each dancing clip, I extracted the audio as a .wav file. Spleeter, and audio source seperation tool made by Deezer is used to extract the drum and base from each song, which are then combined to create a Drum and Bass version of each track. I use the '24khz' encoder of the EnCodec audio encoder, to the map the 5 second drum and base audio clip to a lower dimensionality latent space. For a 5 second clip, the EnCodec model produces a latent vector of 2x377, which is then flattened to 1x754, and use as the target in the training dataset.
 
 ## Model Architecture 
 ![Model Architecture for Training and Inference](ml/assets/model_archtiecture.png "Model Architecture for training and inference")
@@ -100,21 +99,25 @@ Each generated sequence of audio codes is compared to the target and scored usin
 Training stops once the validation loss platues, as I want to avoid overfitting to the training data.
 
 ## Results
-Currently the results are poor. An example is provided bellow. The audio generated is slightly better than random noise as we can hear some musicality, however it doesn't come close to obviously matching the movement of the dancer.
+From the example results published below, we can see that the results are not yet ideal. The audio generated has the hints of musicality, however it doesn't come close to obviously matching the movement of the dancer.
 
-![My Generated Audio](ml/assets/generated_audio.wav)
+<table>
+  <tr>
+    <td>
+      <a href="https://youtu.be/LlN2wxKExRo" target="_blank">
+        <img src="https://img.youtube.com/vi/LlN2wxKExRo/0.jpg" alt="Ground Truth Video" style="width: 100%;">
+      </a>
+      <p align="center">Ground Truth</p>
+    </td>
+    <td>
+      <a href="https://youtu.be/3oJERPxoX34" target="_blank">
+        <img src="https://img.youtube.com/vi/3oJERPxoX34/0.jpg" alt="Prediction Video" style="width: 100%;">
+      </a>
+      <p align="center">Prediction</p>
+    </td>
+  </tr>
+</table>
 
-<figure style="float: left; margin-right: 20px;">
-  <video src="assets/sample_output_video_original.mp4" width="400" height="300" controls="controls"></video>
-  <figcaption>Original Audio</figcaption>
-</figure>
-
-<figure style="float: left;">
-  <video src="assets/sample_output_video.mp4" width="400" height="300" controls="controls"></video>
-  <figcaption>Generated Audio</figcaption>
-</figure>
-
-<div style="clear: both;"></div>
 
 
 ## Next Steps
