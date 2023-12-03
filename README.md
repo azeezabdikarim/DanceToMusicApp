@@ -99,7 +99,7 @@ Each generated sequence of audio codes is compared to the target and scored usin
 Training stops once the validation loss platues, as I want to avoid overfitting to the training data.
 
 ## Results
-From the example results published below, we can see that the results are not yet ideal. The audio generated has the hints of musicality, however it doesn't come close to obviously matching the movement of the dancer.
+Sample results can be viewed below by clicking on the thumbnails. In the models current state we can see that the results are not yet ideal. The audio generated has the hints of musicality, however it doesn't come close to obviously matching the movement of the dancer.
 
 <table>
   <tr>
