@@ -44,7 +44,8 @@ git clone https://github.com/azeezabdikarim/DanceToMusic.git
 # Navigate to the repository
 cd DanceToMusic
 
-# It is recommended to create a virtual environment for the project to avoid conflicts with other packages and versions
+# It is recommended to create a virtual environment for the project to avoid
+# conflicts with other packages and versions
 python -m .venv venv
 
 # Activate the virtual environment
@@ -56,11 +57,15 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Build the video dataset, extracting 5 second clips at 24fps
-# FYI: The video downloads might take a while depending on your internet speeds. Also, MediaPipe uses the CPU to calculate human pose estimates, so that will take a decent amount of time. It takes me between 1-2 hours to build the complete dataset of ~1300 clips on a MacBook Pro with an M2 Max chip
+# FYI: The video downloads might take a while depending on your internet speeds. Also, MediaPipe uses the CPU to calculate human
+# pose estimates, so that will take a decent amount of time. It takes me between 1-2 hours to build the complete dataset of ~1300 clips
+# on a MacBook Pro with an M2 Max chip
 python ml/data/building_tools/build_dnb_dataset.py --output_path ml/data/samples/ --input_csv ml/data/youtube_links/youtube_links_test.csv  --max_seq_len 5 --fps 24
 
-# If you want to test the model's generative capabilties, you can navigate to the webapp/ directory and run app.py, which launches a local Flask webapp where one can upload a video, and in turn receive generated music.
-# Depending on the local machine's computing resources, human pose estimation and audio generation could take 3-20 seconds. Once a video is uploaded the page will hold and run computation until the new audio is ready.
+# If you want to test the model's generative capabilties, you can navigate to the webapp/ directory and run app.py, which launches
+# a local Flask webapp where one can upload a video, and in turn receive generated music. Depending on the local machine's computing
+# resources, human pose estimation and audio generation could take 3-20 seconds. Once a video is uploaded the page will hold and run
+# computation until the new audio is ready.
 pip install Flask
 cd webapp/
 python app.py
