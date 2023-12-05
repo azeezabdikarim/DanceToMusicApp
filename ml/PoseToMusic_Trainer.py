@@ -13,7 +13,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
 from datetime import datetime
 from torch.optim import Adam
-from transformers import AutoProcessor, EncodecModel, EncodecFeatureExtractor
+from transformers import EncodecModel
 from models import Pose2AudioTransformer
 from utils import DanceToMusic
 from torch.utils.tensorboard import SummaryWriter
@@ -44,7 +44,7 @@ if __name__ == "__main__":
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
-    device = torch.device("cpu")
+    # device = torch.device("cpu")
 
 
     model_id = "facebook/encodec_24khz"
@@ -54,12 +54,11 @@ if __name__ == "__main__":
     # processor = AutoProcessor.from_pretrained(model_id)
     
     sample_rate = 24000
-    batch_size = 60
+    batch_size = 20 # Batch size for Nvididias GTX 3080 9.88/10GB
 
     # data_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusic/data/samples/5sec_min_data'
     # data_dir = "/Users/azeez/Documents/pose_estimation/DanceToMusic/data/min_training_data"
-    # data_dir = '/home/azeez/azeez_exd/misc/DanceToMusic/data/samples'
-    data_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
+    data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
     train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
     embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
 
@@ -84,18 +83,19 @@ if __name__ == "__main__":
     pose_model = Pose2AudioTransformer(codebook_size, src_pad_idx, trg_pad_idx, device=device, num_layers=4, heads = 4, embed_size=embed_size, dropout=0.1)
     pose_model.to(device)
     
-    # weights = '/Users/azeez/Documents/pose_estimation/DanceToMusic/weights/best_model_0.0152.pt'
-    # pose_model.load_state_dict(torch.load(weights, map_location=device))
+    # weights = 'DanceToMusicApp/ml/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
+    weights = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
+    pose_model.load_state_dict(torch.load(weights, map_location=device))
 
-    learning_rate = 1e-3
+    learning_rate = 1e-4
     # criterion = CrossEntropyLoss()
     criterion = torch.nn.NLLLoss()
     # criterion = MSELoss()
     optimizer = torch.optim.Adam(pose_model.parameters(), lr=learning_rate)
 
     # Set up for tracking the best model
-    # weights_dir = '/home/azeez/azeez_exd/misc/DanceToMusic/weights'
-    weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
+    weights_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights'
+    # weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
     best_loss = float('inf')  # Initialize with a high value
     last_saved_model = ''
 

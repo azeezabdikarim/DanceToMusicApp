@@ -39,36 +39,34 @@ One can start playing with this project by first cloning the repository, buildin
 ```bash
 
 # Clone the repository
-git clone https://github.com/azeezabdikarim/DanceToMusic.git
+git clone https://github.com/azeezabdikarim/DanceToMusicApp.git
 
 # Navigate to the repository
 cd DanceToMusic
 
-# It is recommended to create a virtual environment for the project to avoid
+# It is recommended to create a Conda environment for the project to avoid
 # conflicts with other packages and versions
-python -m .venv venv
+conda create --name dance2music python=3.x
 
-# Activate the virtual environment
-# On Windows, use `.\venv\Scripts\activate`
-# On Unix or MacOS, use `source venv/bin/activate`
-source .venv/bin/activate
+# Activate the Conda environment
+conda activate dance2music
 
 # Install the required packages
+conda install --file requirements.txt
+
+# If there are any packages not available via conda, install them using pip
 pip install -r requirements.txt
 
 # Build the video dataset, extracting 5 second clips at 24fps
-# FYI: The video downloads might take a while depending on your internet speeds. Also, MediaPipe uses the CPU to calculate human
-# pose estimates, so that will take a decent amount of time. It takes me between 1-2 hours to build the complete dataset of ~1300 clips
-# on a MacBook Pro with an M2 Max chip
 python ml/data/building_tools/build_dnb_dataset.py --output_path ml/data/samples/ --input_csv ml/data/youtube_links/youtube_links_test.csv  --max_seq_len 5 --fps 24
 
-# If you want to test the model's generative capabilties, you can navigate to the webapp/ directory and run app.py, which launches
-# a local Flask webapp where one can upload a video, and in turn receive generated music. Depending on the local machine's computing
-# resources, human pose estimation and audio generation could take 3-20 seconds. Once a video is uploaded the page will hold and run
-# computation until the new audio is ready.
-pip install Flask
+# Install Flask for the web application
+conda install flask
+
+# Navigate to the webapp directory and run the Flask app
 cd webapp/
 python app.py
+
 
 ```
 ## Usage

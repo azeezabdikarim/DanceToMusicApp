@@ -14,7 +14,7 @@ from encodec.utils import convert_audio
 from torch.utils.data import DataLoader, Dataset
 from datetime import datetime
 from torch.optim import Adam
-from transformers import AutoProcessor, EncodecModel, EncodecFeatureExtractor
+from transformers import EncodecModel
 from models import Pose2AudioTransformer
 from torch.utils.tensorboard import SummaryWriter
 
