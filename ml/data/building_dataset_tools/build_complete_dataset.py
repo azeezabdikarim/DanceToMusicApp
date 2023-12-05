@@ -7,7 +7,6 @@ import csv
 import os
 
 
-# DanceToMusic/data/youtube_links/youtube_links_test.csv --output_path /home/azeez/azeez_exd/misc/DanceToMusic/data/buildinpython /home/azeez/azeez_exd/misc/DanceToMusic/data/building_tools/build_complete_dataset.py --input_csv /home/azeez/azeez_exd/misc/g_tools
 # python /Users/azeez/Documents/pose_estimation/DanceToMusic/data/building_tools/build_complete_dataset.py --output_path /Users/azeez/Documents/pose_estimation/DanceToMusic/data/samples/5sec_expando_dataset --input_csv /Users/azeez/Documents/pose_estimation/DanceToMusic/data/youtube_links/youtube_links.csv  --max_seq_len 5 --fps 24
 # python /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/building_dataset_tools/build_complete_dataset.py --output_path /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_test --input_csv /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/youtube_links/youtube_links_test.csv  --max_seq_len 5 --fps 24
 def download_and_clip_videos(input_csv, output_path, max_seq_len):    
