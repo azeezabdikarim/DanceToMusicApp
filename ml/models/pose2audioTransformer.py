@@ -158,6 +158,7 @@ class Decoder(nn.Module):
         self.device = device
         self.embed_size = embed_size
         self.codebook_embedding = nn.Embedding(code_book_len, embed_size)
+        self.combine_codebook_embeddings = nn.Linear(embed_size * 2, embed_size)
         self.position_embedding = nn.Embedding(max_length, embed_size)
 
         self.layers = nn.ModuleList(
@@ -185,10 +186,13 @@ class Decoder(nn.Module):
         return pe.unsqueeze(0)
 
     def forward(self, x, enc_out, src_mask, trg_mask):
-        B, seq_length = x.shape
-        positions = self.positional_encoding(seq_length)
+        B, seq_length, _ = x.shape
+        positions = self.positional_encoding(seq_length).expand(B, 1, -1)
         x = x.long()
-        x = self.dropout(self.codebook_embedding(x) + positions[:, :seq_length, :])
+        codebook_embeddings = self.codebook_embedding(x)
+        combined_codebook_embedding = self.combine_codebook_embeddings(codebook_embeddings.view(B, seq_length, -1))
+
+        x = self.dropout(combined_codebook_embedding + positions[:, :seq_length, :])
 
         for layer in self.layers:
             x = layer(x, enc_out, enc_out, src_mask, trg_mask)
@@ -209,7 +213,96 @@ class Decoder(nn.Module):
         # Finding the index with maximum probability
         argmax_out = torch.argmax(softmax_out, dim=-1)
         final_output_argmax = argmax_out[:, 1:]     # Remove the start token from the output
+        
+        return softmax_out, argmax_out, offset, logits_out
 
+class Decoder(nn.Module):
+    def __init__(self,
+                code_book_len,
+                embed_size,
+                num_layers,
+                heads,
+                forward_expansion,
+                dropout,
+                device,
+                max_length
+                ):
+        super(Decoder, self).__init__()
+        self.device = device
+        self.embed_size = embed_size
+        self.codebook_embedding = nn.Embedding(code_book_len, embed_size)
+        self.combine_codebook_embeddings = nn.Linear(embed_size * 2, embed_size)
+        self.position_embedding = nn.Embedding(max_length, embed_size)
+
+        self.layers = nn.ModuleList(
+            [
+                DecoderBlock(
+                    embed_size,
+                    heads,
+                    forward_expansion,
+                    dropout,
+                    device
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        self.fc_out_1 = nn.Linear(embed_size, code_book_len)
+        self.fc_out_2 = nn.Linear(embed_size, code_book_len)
+        self.dropout = nn.Dropout(dropout)
+
+    def positional_encoding(self, seq_len):
+        pe = torch.zeros(seq_len, self.embed_size).to(self.device)
+        position = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, self.embed_size, 2).float() * (-math.log(10000.0) / self.embed_size))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        return pe.unsqueeze(0)
+
+    def forward(self, x, enc_out, src_mask, trg_mask):
+        B, seq_length, _ = x.shape
+        positions = self.positional_encoding(seq_length).expand(B, seq_length, -1)
+        x = x.long()
+        codebook_embeddings = self.codebook_embedding(x)
+        combined_codebook_embedding = self.combine_codebook_embeddings(codebook_embeddings.view(B, seq_length, -1))
+
+        x = self.dropout(combined_codebook_embedding + positions[:, :seq_length, :])
+
+        for layer in self.layers:
+            x = layer(x, enc_out, enc_out, src_mask, trg_mask)
+
+        out_1 = self.fc_out_1(x)
+        out_2 = self.fc_out_2(x)
+        
+        # Applying softmax to get probabilities
+        softmax_out_1 = F.softmax(out_1, dim=-1)
+        softmax_out_2 = F.softmax(out_2, dim=-1)
+
+        if softmax_out_1.shape[1] > 1:  
+            final_output_softmax_1 = softmax_out_1[:, 1:, :]
+            logits_out_1 = softmax_out_1[:, 1:, :]
+
+            final_output_softmax_2 = softmax_out_2[:, 1:, :]
+            logits_out_2 = softmax_out_2[:, 1:, :]
+            offset = 1
+        else:
+            final_output_softmax_1 = softmax_out_1 # special situation when start token is the only value
+            logits_out_1 = out_1
+
+            final_output_softmax_2 = softmax_out_2 # special situation when start token is the only value
+            logits_out_2 = out_2
+            offset = 0 
+
+        # Finding the index with maximum probability
+        argmax_out_1 = torch.argmax(softmax_out_1, dim=-1)
+        final_output_argmax_1 = argmax_out_1[:, 1:]     # Remove the start token from the output
+
+        argmax_out_2 = torch.argmax(softmax_out_2, dim=-1)
+        final_output_argmax_2 = argmax_out_2[:, 1:]
+
+        softmax_out = torch.cat((final_output_softmax_1, final_output_softmax_2), dim=1)
+        argmax_out = torch.cat((final_output_argmax_1, final_output_argmax_2), dim=1)
+        logits_out = torch.cat((logits_out_1, logits_out_2), dim=1)
         
         return softmax_out, argmax_out, offset, logits_out
 
@@ -278,8 +371,15 @@ class Pose2AudioTransformer(nn.Module):
         out = self.decoder(trg, enc_src, src_mask, trg_mask)
         return out
 
+    # def make_trg_mask(self, trg):
+    #     B, _, seq_length = trg.shape
+    #     trg_mask = torch.tril(torch.ones((seq_length, seq_length))).expand(
+    #         B, 1, seq_length, seq_length
+    #     )
+    #     return trg_mask.to(self.device)
+
     def make_trg_mask(self, trg):
-        B, seq_length = trg.shape
+        B, seq_length, _ = trg.shape
         trg_mask = torch.tril(torch.ones((seq_length, seq_length))).expand(
             B, 1, seq_length, seq_length
         )

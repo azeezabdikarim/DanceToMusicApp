@@ -26,8 +26,12 @@ instructions/*
 older_docker.txt
 requirements_docker.txt
 */.DS_Store
+.DS_Store
 noarch/
 .vscode/
 channeldata.json
 index.html
 my_logs/
+
+requirements_mac.txt
+ml/model_weights/

@@ -44,7 +44,7 @@ if __name__ == "__main__":
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
-    # device = torch.device("cpu")
+    device = torch.device("cpu")
 
 
     model_id = "facebook/encodec_24khz"
@@ -57,8 +57,8 @@ if __name__ == "__main__":
     batch_size = 20 # Batch size for Nvididias GTX 3080 9.88/10GB
 
     # data_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusic/data/samples/5sec_min_data'
-    # data_dir = "/Users/azeez/Documents/pose_estimation/DanceToMusic/data/min_training_data"
-    data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
+    data_dir = "/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_test"
+    # data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
     train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
     embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
 
@@ -84,8 +84,8 @@ if __name__ == "__main__":
     pose_model.to(device)
     
     # weights = 'DanceToMusicApp/ml/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
-    weights = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
-    pose_model.load_state_dict(torch.load(weights, map_location=device))
+    # weights = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
+    # pose_model.load_state_dict(torch.load(weights, map_location=device))
 
     learning_rate = 1e-4
     # criterion = CrossEntropyLoss()
@@ -94,8 +94,8 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(pose_model.parameters(), lr=learning_rate)
 
     # Set up for tracking the best model
-    weights_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights'
-    # weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
+    # weights_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights'
+    weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
     best_loss = float('inf')  # Initialize with a high value
     last_saved_model = ''
 
@@ -121,9 +121,9 @@ if __name__ == "__main__":
             pose = pose
             pose_mask = pose_mask
             target = audio_codes.to(device)
-            target_for_loss = target[:, :, 1:]
+            target_for_loss = target[:, 1:, :]
             
-            input_for_next_step = target[:, :, 0]
+            input_for_next_step = target[:, 0:1, :]
             outputs = []
             batch_loss = 0
             
@@ -134,20 +134,22 @@ if __name__ == "__main__":
             B, N, _, _ = pose.shape
             enc_context = pose_model.encoder(src.view(B, N, -1), enc_mask)
             
-            for t in range(1, target.shape[2]):
+            for t in range(1, target.shape[1]):
                 output_softmax, output_argmax, offset, _ = pose_model.decoder(input_for_next_step.to(device), enc_context, enc_mask, trg_mask)
                 
-                log_softmax_output = torch.log(output_softmax)
+                log_softmax_output = torch.log(output_softmax[:,-2:,:])
                 log_softmax_output_reshape = log_softmax_output.view(-1, log_softmax_output.shape[2])
-                reshaped_target = target[:, :, t].reshape(-1).long()
+                reshaped_target = target[:, t, :].reshape(-1).long()
                 time_step_loss = criterion(log_softmax_output_reshape, reshaped_target)
                 batch_loss += time_step_loss
                 
                 use_teacher_forcing = np.random.random() < teacher_forcing_ratio
                 if use_teacher_forcing:
-                    input_for_next_step = target[:, :, t]
+                    input_for_next_step = torch.cat([input_for_next_step, target[:, t:t+1, :]], dim=1)  # Concatenate along the sequence length dimension
                 else:
-                    input_for_next_step = output_softmax.argmax(dim=2)
+                    next_token = output_softmax[:,-2:,:].argmax(dim=2)
+                    input_for_next_step = torch.cat([input_for_next_step, next_token.unsqueeze(1)], dim=1)
+                trg_mask = pose_model.make_trg_mask(input_for_next_step.to(device))
                 
                 outputs.append(output_softmax)
                 timesteps += 1
@@ -174,27 +176,41 @@ if __name__ == "__main__":
             val_loss = 0
             with torch.no_grad():
                 for audio_codes, pose, pose_mask, wav, wav_mask, _, _ in val_loader:
-                    # Forward pass
-                    wav = wav.unsqueeze(1)
+                    # Forward pass setup
                     target = audio_codes.to(device)
-                    target_for_loss = target[:, :, 1:]
+                    input_for_next_step = target[:, 0:1, :]
+                    batch_loss = 0
 
-                    output_softmax, output_argmax, offset, _ = pose_model(pose.to(device), target.squeeze(1).to(device), src_mask=pose_mask.to(device))
+                    src = pose.to(device)
+                    enc_mask = pose_model.make_src_mask(src)
+                    trg_mask = pose_model.make_trg_mask(input_for_next_step.to(device))
 
-                    output_softmax = output_softmax[:, offset:, :]
-                    reshaped_output_softmax = output_softmax.reshape(-1, output_softmax.shape[2])
-                    reshaped_target = target_for_loss.reshape(-1).long()
-                    log_softmax_output = torch.log(output_softmax)  
-                    log_softmax_output_reshape = log_softmax_output.view(-1, log_softmax_output.shape[2])  
+                    B, N, _, _ = pose.shape
+                    enc_context = pose_model.encoder(src.view(B, N, -1), enc_mask)
+                    pred_steps = 0
 
-                    computed_loss = criterion(log_softmax_output_reshape, reshaped_target)
-                    val_loss += computed_loss.item()
-                    
-            # Compute average validation loss
-            avg_val_loss = val_loss / len(val_loader)
-            writer.add_scalar('Validation Loss', avg_val_loss, epoch)
-            print(f"\n Epoch [{epoch+1}/{num_epochs}], Average Loss: {avg_epoch_loss:.4f}. Validation Loss: {avg_val_loss:.4f}")
+                    for t in range(1, target.shape[1]):  # Adjust the range according to your target shape
+                        output_softmax, output_argmax, offset, _ = pose_model.decoder(input_for_next_step.to(device), enc_context, enc_mask, trg_mask)
+
+                        log_softmax_output = torch.log(output_softmax[:,-2:,:])
+                        log_softmax_output_reshape = log_softmax_output.view(-1, log_softmax_output.shape[2])
+                        reshaped_target = target[:, t, :].reshape(-1).long()
+                        time_step_loss = criterion(log_softmax_output_reshape, reshaped_target)
+                        batch_loss += time_step_loss
+                        pred_steps += 1
+
+                        next_token = output_softmax[:,-2:,:].argmax(dim=2)
+                        input_for_next_step = torch.cat([input_for_next_step, next_token.unsqueeze(1)], dim=1)
+                        trg_mask = pose_model.make_trg_mask(input_for_next_step.to(device))
+
+                    val_loss += (batch_loss.item()/pred_steps)
+                    pred_steps = 0
+                
+                avg_val_loss = val_loss / len(val_loader)
+                writer.add_scalar('Validation Loss', avg_val_loss, epoch)
+                print(f"\n Epoch [{epoch+1}/{num_epochs}], Average Loss: {avg_epoch_loss:.4f}. Validation Loss: {avg_val_loss:.4f}")
         else:
             print(f"\n Epoch [{epoch+1}/{num_epochs}], Average Loss: {avg_epoch_loss:.4f}")
         writer.add_scalar('Average Loss', avg_epoch_loss, epoch)
+
     writer.close()
