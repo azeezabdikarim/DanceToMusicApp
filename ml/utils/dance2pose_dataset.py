@@ -42,7 +42,7 @@ class DanceToMusic(Dataset):
         count_loaded_sample = 0
         for root, dirs, files in os.walk(directory):
             for d in dirs:
-                if 'error' not in d:
+                if 'error' not in d and 'spleeter' not in os.path.join(root,d):
                     pose_path = os.path.join(root, d, f"{root.split('/')[-1]}_{d[:-7]}_3D_landmarks.npy")
                     if dnb:
                         wav_path = os.path.join(root, d, f"{d[:-7]}_drum_and_bass.wav")
@@ -74,10 +74,11 @@ class DanceToMusic(Dataset):
             wav = wav.unsqueeze(0).to(self.device)
             audio_padding_mask = data['audio_padding_mask'].to(self.device)
             encoding = encoder.encode(wav, audio_padding_mask[i].unsqueeze(0))
-            one_audio_code = encoding['audio_codes'].view(1,1,-1)
+            # one_audio_code = encoding['audio_codes'].view(1,1,-1)
+            one_audio_code = encoding['audio_codes'].view(1,-1,2)
             one_audio_code = one_audio_code.squeeze(0)
             # # Adding a start token at the beginning of each audio code sequence
-            audio_code_with_start = torch.cat((torch.zeros(1, 1).to(self.device), one_audio_code), dim=1)
+            audio_code_with_start = torch.cat((torch.zeros(1,2).to(self.device), one_audio_code), dim=0)
             audio_codes.append(audio_code_with_start.to(self.device))
         data['audio_codes'] = audio_codes
         return data
