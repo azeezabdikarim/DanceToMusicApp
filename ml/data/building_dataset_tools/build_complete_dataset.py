@@ -104,8 +104,12 @@ def main():
     print("Step 3: Extracting poses...")
     extract_poses(args.output_path, args.fps)
 
-    # Step 4: Save Minimum Data For Training
-    print("Step 4: Saving minimum data for training...")
+    # Step 4: Pre-Build Audio Encodings
+    print("Step 4: Pre-Build Audio Encodings...")
+    preBuildEncodings(args.output_path, dnb=False)
+
+    # Step 5: Save Minimum Data For Training
+    print("Step 5: Saving minimum data for training...")
     min_data_out_path = '/' + os.path.join(*args.output_path.split('/'))+'_min_training_data'
     save_min_data_for_training(args.output_path, min_data_out_path)
 

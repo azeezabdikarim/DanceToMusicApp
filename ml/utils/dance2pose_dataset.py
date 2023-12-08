@@ -13,9 +13,10 @@ class DanceToMusic(Dataset):
         self.device = device
         self.raw_data = self._load_data(directory, sample_rate, num_samples, dnb)
         self.data = self._buildData(self.raw_data)
-        self.encoder = encoder
-        if encoder is not None:
-            self.data = self._encodeAudio(encoder, self.data)
+        if 'audio_codes' not in self.data.keys():
+            self.encoder = encoder
+            if encoder is not None:
+                self.data = self._encodeAudio(encoder, self.data)
 
     def __len__(self):
         return len(self.data['poses'])
@@ -28,7 +29,7 @@ class DanceToMusic(Dataset):
         pose_mask = self.data['pose_padding_mask'][idx]
         wav_mask = self.data['audio_padding_mask'][idx]
 
-        if self.encoder is None:
+        if 'audio_codes' not in self.data.keys():
             return [pose, pose_mask, wav, wav_mask, wav_path, sample_rate]
         
         audio_codes = self.data['audio_codes'][idx]
@@ -40,6 +41,7 @@ class DanceToMusic(Dataset):
         wav_paths = []
         sample_rate = []
         count_loaded_sample = 0
+        audio_codes = []
         for root, dirs, files in os.walk(directory):
             for d in dirs:
                 if 'error' not in d and 'spleeter' not in os.path.join(root,d):
@@ -49,6 +51,10 @@ class DanceToMusic(Dataset):
                     else:
                         wav_path = os.path.join(root, d, f"{d[:-7]}.wav")
 
+                    audio_code_path = wav_path.replace('.wav', '_audio_code.npy')
+                    if os.path.exists(audio_code_path):
+                        audio_code = np.load(audio_code_path)
+                        audio_codes.append(audio_code)
                     # poses.append(self._buildPoses(pose_dir_path))
                     poses.append(np.load(pose_path))
                     wav, sr = librosa.load(wav_path, sr=sr)
@@ -65,6 +71,8 @@ class DanceToMusic(Dataset):
             "wav_paths": wav_paths,
             "sample_rate": sample_rate
         }
+        if len(audio_codes) > 0:
+            ret['audio_codes'] = audio_codes
         return ret
 
     # precomuting the encoding of the adio and adding a start token at the beginning of each audio code sequence
@@ -87,6 +95,8 @@ class DanceToMusic(Dataset):
         data = {}
         data['wav_paths'] = raw_data['wav_paths']
         data['sample_rate'] =  raw_data['sample_rate']
+        if 'audio_codes' in raw_data.keys():
+            data['audio_codes'] = raw_data['audio_codes']
         
         # Handle poses
         poses = [torch.tensor(p) for p in raw_data['poses']]
