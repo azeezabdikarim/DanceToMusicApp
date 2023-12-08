@@ -4,7 +4,7 @@ webapp/static/uploads/
 # virutl env
 venv/
 .venv/
-
+pretrained_models/
 ml/__pycache__/
 ml/*.pyc
 ml/*.pyo

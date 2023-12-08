@@ -50,7 +50,7 @@ if __name__ == "__main__":
     model_id = "facebook/encodec_24khz"
     encodec_model = EncodecModel.from_pretrained(model_id)
     codebook_size = encodec_model.quantizer.codebook_size
-    encodec_model.to(device)
+    # encodec_model.to(device)
     # processor = AutoProcessor.from_pretrained(model_id)
     
     sample_rate = 24000
@@ -59,7 +59,8 @@ if __name__ == "__main__":
     data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
     # data_dir = "/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_test"
     # data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
-    train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
+    # train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
+    train_dataset = DanceToMusic(data_dir, sample_rate = sample_rate, device=device, dnb = True)
     embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
 
 
@@ -179,7 +180,7 @@ if __name__ == "__main__":
         # Check if this epoch resulted in a better model
         if avg_epoch_loss < best_loss:
             best_loss = avg_epoch_loss
-            last_saved_model = save_model(pose_model, weights_dir, best_loss, last_saved_model, name='5_sec_2D_')
+            last_saved_model = save_model(pose_model, weights_dir, best_loss, last_saved_model, name='2D_audio_codes')
 
         if epoch % val_epoch_interval == 0:
             pose_model.eval()
