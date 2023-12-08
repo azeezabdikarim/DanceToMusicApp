@@ -54,10 +54,10 @@ if __name__ == "__main__":
     # processor = AutoProcessor.from_pretrained(model_id)
     
     sample_rate = 24000
-    batch_size = 20 # Batch size for Nvididias GTX 3080 9.88/10GB
+    batch_size = 5 # Batch size for Nvididias GTX 3080 9.88/10GB
 
     # data_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusic/data/samples/5sec_min_data'
-    data_dir = "/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_test"
+    data_dir = "/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_dnb"
     # data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
     train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
     embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     # weights = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
     # pose_model.load_state_dict(torch.load(weights, map_location=device))
 
-    learning_rate = 1e-4
+    learning_rate = 1e-3
     # criterion = CrossEntropyLoss()
     criterion = torch.nn.NLLLoss()
     # criterion = MSELoss()

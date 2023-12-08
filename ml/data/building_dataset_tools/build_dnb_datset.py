@@ -4,6 +4,7 @@ from pose_extraction_media_pipe import *
 from copy_min_training_data import *
 from seperate_vocals import *
 from build_complete_dataset import *
+from build_audio_encodings import *
 import csv
 import os
 import time
@@ -73,8 +74,12 @@ def main():
     print("Step 5: Replacing audio in rendered videos with instrumental...")
     replace_audio_in_renders(args.output_path)
 
-    # Step 6: Save Minimum Data For Training
-    print("Step 6: Saving minimum data for training...")
+    # Step 6: Pre-Build Audio Encodings
+    print("Step 6: Pre-Build Audio Encodings...")
+    preBuildEncodings(args.output_path, dnb=True)
+    
+    # Step 7: Save Minimum Data For Training
+    print("Step 7: Saving minimum data for training...")
     min_data_out_path = '/' + os.path.join(*args.output_path.split('/'))+'_min_training_data'
     save_min_data_for_training(args.output_path, min_data_out_path)
 
