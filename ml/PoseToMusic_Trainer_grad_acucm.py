@@ -50,7 +50,7 @@ if __name__ == "__main__":
     model_id = "facebook/encodec_24khz"
     encodec_model = EncodecModel.from_pretrained(model_id)
     codebook_size = encodec_model.quantizer.codebook_size
-    encodec_model.to(device)
+    # encodec_model.to(device)
     # processor = AutoProcessor.from_pretrained(model_id)
     
     sample_rate = 24000
@@ -85,8 +85,8 @@ if __name__ == "__main__":
     pose_model.to(device)
     
     # weights = 'DanceToMusicApp/ml/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
-    # weights = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
-    # pose_model.load_state_dict(torch.load(weights, map_location=device))
+    weights = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights/5_sec_2D__best_model_1918.1484.pt'
+    pose_model.load_state_dict(torch.load(weights, map_location=device))
 
     learning_rate = 1e-3
     # criterion = CrossEntropyLoss()
@@ -95,13 +95,8 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(pose_model.parameters(), lr=learning_rate)
 
     # Set up for tracking the best model
-<<<<<<< HEAD
-    # weights_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights'
-    weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
-=======
     weights_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights'
     # weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
->>>>>>> 8582d72130686e544a8e446562ec63f6482f364b
     best_loss = float('inf')  # Initialize with a high value
     last_saved_model = ''
 
@@ -118,9 +113,9 @@ if __name__ == "__main__":
         pose_model.train()
         epoch_loss = 0  # Initialize epoch_loss
         timesteps = 0
+        optimizer.zero_grad()  # Clear gradients
 
         for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, _) in tqdm(enumerate(train_loader), total=len(train_loader)):
-            optimizer.zero_grad()  # Clear gradients
             
             # Forward pass
             wav = wav.unsqueeze(1)
@@ -130,10 +125,6 @@ if __name__ == "__main__":
             target_for_loss = target[:, 1:, :]
             
             input_for_next_step = target[:, 0:1, :]
-<<<<<<< HEAD
-            outputs = []
-=======
->>>>>>> 8582d72130686e544a8e446562ec63f6482f364b
             batch_loss = 0
             
             src = pose.to(device)
@@ -161,15 +152,27 @@ if __name__ == "__main__":
                 trg_mask = pose_model.make_trg_mask(input_for_next_step.to(device))
                 
                 timesteps += 1
+
+                
+            batch_loss /= accumulation_steps  # Scale down loss
+            batch_loss.backward()  # Accumulate gradients
             
-            # Backpropagate the gradients
-            batch_loss.backward()
-            
-            # Update weights
-            optimizer.step()
-            
-            # Update epoch loss
+            if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train_loader):
+                optimizer.step()  # Perform a step
+                optimizer.zero_grad()  # Reset gradients
+
             epoch_loss += batch_loss.item()
+
+            # # Backpropagate the gradients
+            # batch_loss.backward()
+            
+            # # Update weights
+            # optimizer.step()
+            
+            # # Update epoch loss
+            # epoch_loss +=  batch_loss.item()
+
+            
             
         avg_epoch_loss = epoch_loss / (timesteps)   # Compute average epoch loss
 
@@ -177,7 +180,7 @@ if __name__ == "__main__":
         # Check if this epoch resulted in a better model
         if avg_epoch_loss < best_loss:
             best_loss = avg_epoch_loss
-            last_saved_model = save_model(pose_model, weights_dir, best_loss, last_saved_model, name='5_sec_transformer_')
+            last_saved_model = save_model(pose_model, weights_dir, best_loss, last_saved_model, name='2D_audio_codes')
 
         if epoch % val_epoch_interval == 0:
             pose_model.eval()
@@ -220,10 +223,7 @@ if __name__ == "__main__":
         else:
             print(f"\n Epoch [{epoch+1}/{num_epochs}], Average Loss: {avg_epoch_loss:.4f}")
         writer.add_scalar('Average Loss', avg_epoch_loss, epoch)
-<<<<<<< HEAD
-=======
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
->>>>>>> 8582d72130686e544a8e446562ec63f6482f364b
 
     writer.close()
