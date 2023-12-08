@@ -27,10 +27,9 @@ def main():
             if 'error' not in d and 'spleeter' not in os.path.join(root,d):
                 pose_path = os.path.join(root, d, f"{root.split('/')[-1]}_{d[:-7]}_3D_landmarks.npy")
                 wav_path = os.path.join(root, d, f"{d[:-7]}.wav")
-                if os.path.exists(wav_path.replace('.wav', '_audio_code.npy')):
-                    audio_code_path = wav_path.replace('.wav', '_audio_code.npy')
-                else:
-                    audio_code_path = wav_path.replace('.wav', '_drum_and_bass_audio_code.npy')
+                audio_code_path = wav_path.replace('.wav', '_audio_code.npy')
+
+                
 
                 sample_poses = np.load(pose_path)
                 wav, _ = librosa.load(wav_path, sr=sr)
@@ -49,7 +48,14 @@ def main():
                 np.save(pose_output_path, sample_poses)
                 sf.write(wav_output_path, wav, sr)
                 np.save(audio_code_output_path, audio_code)
-                # librosa.output.write_wav(wav_output_path, wav, sr)
+
+                dnb_wav_path = os.path.join(root, d, f"{d[:-7]}_drum_and_bass.wav")
+                if os.path.exists(dnb_wav_path):
+                    dnb_wav, _ = librosa.load(dnb_wav_path, sr=sr)
+                    dnb_audio_code_path = dnb_wav_path.replace('.wav', '_audio_code.npy')
+                    dnb_audio_code = np.load(dnb_audio_code_path)
+                    dnb_audio_code_output_path = wav_output_path.replace('.wav', '_drum_and_bass_audio_code.npy')
+                    np.save(dnb_audio_code_output_path, dnb_audio_code)
 
 if __name__ == "__main__":
     main()

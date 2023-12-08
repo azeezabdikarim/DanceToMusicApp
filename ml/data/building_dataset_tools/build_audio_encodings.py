@@ -62,12 +62,15 @@ def preBuildEncodings(input_dir, dnb = False):
         for d in dirs:
             if 'error' not in d and 'spleeter' not in os.path.join(root,d):
                 wav_path = os.path.join(root, d, f"{d[:-7]}.wav")
-                if dnb:
-                    wav_path = os.path.join(root, d, f"{d[:-7]}_drum_and_bass.wav")
-
                 wav, _ = librosa.load(wav_path, sr=sr)
                 wav_paths.append(wav_path)
                 wavs.append(wav)
+
+                if dnb:
+                    wav_path = os.path.join(root, d, f"{d[:-7]}_drum_and_bass.wav")
+                    wav, _ = librosa.load(wav_path, sr=sr)
+                    wav_paths.append(wav_path)
+                    wavs.append(wav)
 
     padded_wavs, audio_padding_masks = audioPaddingMask(wavs)
     audio_codes = []
