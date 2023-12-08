@@ -4,7 +4,7 @@ webapp/static/uploads/
 # virutl env
 venv/
 .venv/
-
+pretrained_models/
 ml/__pycache__/
 ml/*.pyc
 ml/*.pyo
@@ -34,4 +34,8 @@ index.html
 my_logs/
 
 requirements_mac.txt
+<<<<<<< HEAD
 ml/model_weights/
+=======
+ml/model_weights/
+>>>>>>> 8582d72130686e544a8e446562ec63f6482f364b
