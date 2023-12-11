@@ -217,44 +217,44 @@ def main():
         if epoch % val_epoch_interval == 0:
             pose_model.eval()
             val_loss = 0
+            val_steps = 0
+
             with torch.no_grad():
                 for audio_codes, pose, pose_mask, wav, wav_mask, _, _ in val_loader:
-                    # Forward pass setup
                     target = audio_codes.to(device)
                     input_for_next_step = target[:, 0:1, :]
-                    batch_loss = 0
-
+                    
                     src = pose.to(device)
                     enc_mask = pose_model.make_src_mask(src)
                     trg_mask = pose_model.make_trg_mask(input_for_next_step.to(device))
 
                     B, N, _, _ = pose.shape
                     enc_context = pose_model.encoder(src.view(B, N, -1), enc_mask)
-                    pred_steps = 0
+                    total_nll_loss = 0
 
-                    for t in range(1, target.shape[1]):  # Adjust the range according to your target shape
+                    for t in range(1, target.shape[1]):
                         output_softmax, output_argmax, offset, _ = pose_model.decoder(input_for_next_step.to(device), enc_context, enc_mask, trg_mask)
 
                         log_softmax_output = torch.log(output_softmax[:,-2:,:])
                         log_softmax_output_reshape = log_softmax_output.view(-1, log_softmax_output.shape[2])
                         reshaped_target = target[:, t, :].reshape(-1).long()
-                        time_step_loss = criterion_g(log_softmax_output_reshape, reshaped_target)
-                        batch_loss += time_step_loss
-                        pred_steps += 1
+                        time_step_nll_loss = criterion_g(log_softmax_output_reshape, reshaped_target)
+                        total_nll_loss += time_step_nll_loss
 
                         next_token = output_softmax[:,-2:,:].argmax(dim=2)
                         input_for_next_step = torch.cat([input_for_next_step, next_token.unsqueeze(1)], dim=1)
                         trg_mask = pose_model.make_trg_mask(input_for_next_step.to(device))
 
-                    val_loss += (batch_loss.item()/pred_steps)
-                    pred_steps = 0
-                
-                avg_val_loss = val_loss / len(val_loader)
+                    avg_nll_loss = total_nll_loss / (target.shape[1] - 1)
+                    val_loss += avg_nll_loss.item()
+                    val_steps += 1
+
+                avg_val_loss = val_loss / val_steps
                 writer.add_scalar('Validation Loss', avg_val_loss, epoch)
-                print(f"\n Epoch [{epoch+1}/{num_epochs}], Average Loss: {avg_epoch_loss:.4f}. Validation Loss: {avg_val_loss:.4f}")
+                print(f"\n Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}")
+
         else:
-            print(f"\n Epoch [{epoch+1}/{num_epochs}], Average Loss: {avg_epoch_loss:.4f}")
-        writer.add_scalar('Average Loss', avg_epoch_loss, epoch)
+            print(f"\n Epoch [{epoch+1}/{num_epochs}]")
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 

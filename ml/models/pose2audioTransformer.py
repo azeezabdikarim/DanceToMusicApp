@@ -390,7 +390,7 @@ class Pose2AudioTransformer(nn.Module):
         enc_src = self.encoder(src.view(B, N, -1), src_mask)
 
         # Initialize with a single start token for each sequence in the batch
-        trg = self.start_token_code.repeat(B, 1).to(self.device)
+        trg = self.start_token_code.repeat(B, 1, 2).to(self.device)
         
         generated_tokens = []
 
@@ -399,10 +399,12 @@ class Pose2AudioTransformer(nn.Module):
             output_softmax, output_argmax, offset, logits = self.decoder(trg, enc_src, src_mask, trg_mask)
             
             # Apply temperature to logits and re-normalize to probabilities
-            output_softmax = F.softmax(logits[:, -1, :] / temperature, dim=-1)
+            output_softmax = F.softmax(logits[:, :, :] / temperature, dim=-1)
             
             # Sample from the softmax output
-            next_token = torch.multinomial(output_softmax, 1).squeeze(-1)
+            d1_token = torch.multinomial(output_softmax[:,0,:], 1).squeeze(-1)
+            d2_token = torch.multinomial(output_softmax[:,0,:], 1).squeeze(-1)
+            next_token = torch.cat((d1_token.unsqueeze(1), d2_token.unsqueeze(1)), dim=1)
 
             # Store the generated tokens
             generated_tokens.append(next_token.unsqueeze(1))
