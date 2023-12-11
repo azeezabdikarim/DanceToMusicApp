@@ -5,9 +5,7 @@ from tqdm import tqdm
 import pickle as pkl
 import time
 
-import librosa
 import torch
-import torchaudio
 from torch.nn import CrossEntropyLoss, MSELoss
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
@@ -42,7 +40,7 @@ def main():
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
-    device = torch.device("cpu")
+    # device = torch.device("cpu")
 
 
     model_id = "facebook/encodec_24khz"
@@ -55,9 +53,9 @@ def main():
     batch_size = 1 # Batch size for Nvididias GTX 3080 9.88/10GB
 
     # data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
-    data_dir = "/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data"
-    data_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_test'
-    # data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
+    # data_dir = "/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data"
+    # data_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_test'
+    data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
     train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
     embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
 
@@ -90,7 +88,7 @@ def main():
     # weights = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
     # pose_model.load_state_dict(torch.load(weights, map_location=device))
 
-    learning_rate = 1e-3
+    learning_rate = 1e-4
     criterion_g = torch.nn.NLLLoss()
     criterion_d = torch.nn.BCELoss()
 
@@ -100,8 +98,8 @@ def main():
 
 
     # Set up for tracking the best model
-    # weights_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights'
-    weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
+    weights_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights'
+    # weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
     best_loss = float('inf')  # Initialize with a high value
     g_last_saved_model = ''
     d_last_saved_model = ''
@@ -126,8 +124,9 @@ def main():
         total_loss_g = 0  # Total generator loss
         total_loss_d = 0  # Total discriminator loss
         total_steps = 0  # To track the number of steps
-
-        for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, _) in tqdm(enumerate(train_loader), total=len(train_loader)):            
+        
+        progress_bar = tqdm(enumerate(train_loader), total=len(train_loader))
+        for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, _) in progress_bar:            
             optimizer_g.zero_grad()
             optimizer_d.zero_grad()
 
@@ -165,13 +164,13 @@ def main():
                 
                 timesteps += 1
 
-            fake_data = input_for_next_step
             # Train Discriminator on Real Data
             real_labels = torch.ones(batch_size, 1, device=device)
-            real_output = descriminator(audio_codes)
+            real_output = descriminator(audio_codes.to(device))
             loss_d_real = criterion_d(real_output, real_labels)
 
             # Train Discriminator on Fake Data
+            fake_data = input_for_next_step
             fake_labels = torch.zeros(batch_size, 1, device=device)
             fake_output = descriminator(fake_data.detach())
             loss_d_fake = criterion_d(fake_output, fake_labels)
@@ -184,7 +183,7 @@ def main():
             avg_nll_loss = total_nll_loss / (target.shape[1] - 1)   
             loss_g = loss_g + avg_nll_loss
 
-            loss_g_scaled = (loss_g + avg_nll_loss) / accumulation_steps
+            loss_g_scaled = loss_g + (avg_nll_loss / accumulation_steps)
             loss_d_scaled = loss_d / accumulation_steps
 
             # Accumulate gradients
@@ -207,16 +206,20 @@ def main():
             avg_batch_loss_d = total_loss_d / total_steps
 
             if total_steps % 5 == 0:
-                writer.add_scalar('Generator Loss', avg_batch_loss_g, epoch * len(train_loader) + i)
-                writer.add_scalar('Discriminator Loss', avg_batch_loss_d, epoch * len(train_loader) + i)
-            print(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_batch_loss_g:.4f}, Discriminator Loss: {avg_batch_loss_d:.4f}")
+                writer.add_scalar('Loss/Generator/Total', avg_batch_loss_g, epoch * len(train_loader) + i)
+                writer.add_scalar('Loss/Generator/Fool Discriminator', loss_g.item(), epoch * len(train_loader) + i)
+                writer.add_scalar('Loss/Generator/Average NLL', avg_nll_loss.item(), epoch * len(train_loader) + i)
+                writer.add_scalar('Loss/Discriminator', avg_batch_loss_d, epoch * len(train_loader) + i)
+            # print(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_batch_loss_g:.4f}, Discriminator Loss: {avg_batch_loss_d:.4f}", end='')
+            progress_bar.set_description(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_batch_loss_g:.4f}, Discriminator Loss: {avg_batch_loss_d:.4f}")
+            print(f"\rEpoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_batch_loss_g:.4f}, Discriminator Loss: {avg_batch_loss_d:.4f}", end='')
 
         # Compute average epoch loss
         avg_epoch_loss_g = total_loss_g / total_steps
         avg_epoch_loss_d = total_loss_d / total_steps
         writer.add_scalar('Average Generator Loss', avg_epoch_loss_g, epoch)
         writer.add_scalar('Average Discriminator Loss', avg_epoch_loss_d, epoch)
-        print(f"End of Epoch [{epoch+1}/{num_epochs}], Average Generator Loss: {avg_epoch_loss_g:.4f}, Average Discriminator Loss: {avg_epoch_loss_d:.4f}")
+        print(f"\nEnd of Epoch [{epoch+1}/{num_epochs}], Average Generator Loss: {avg_epoch_loss_g:.4f}, Average Discriminator Loss: {avg_epoch_loss_d:.4f}")
         # Save the best model, by checking if the new model is perfroming better than the previous best model
         
         if total_loss_g < best_loss:
