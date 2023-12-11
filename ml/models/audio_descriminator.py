@@ -5,7 +5,7 @@ from torch.nn.modules.activation import LeakyReLU, Sigmoid
 from torch.nn.modules.batchnorm import BatchNorm1d
 
 class AudioDescriminator(nn.Module):
-    def __init__(self, input_size, hidden_units = 64, num_hidden_layers = 3, alpha = 0.01):
+    def __init__(self, input_size, hidden_units = 64, num_hidden_layers = 3, alpha = 0.01, sigmoid_out = False):
         super(AudioDescriminator, self).__init__()
         self.input_size = input_size[0] * input_size[1]
         self.flatten = nn.Flatten()
@@ -27,7 +27,8 @@ class AudioDescriminator(nn.Module):
         output_layer = []
         # Output layer
         output_layer.append(nn.Linear(hidden_units, 1))
-        output_layer.append(nn.Sigmoid())
+        if sigmoid_out:
+            output_layer.append(nn.Sigmoid())
         self.output_layer = nn.Sequential(*output_layer)
 
 
