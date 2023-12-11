@@ -60,7 +60,7 @@ def main():
     embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
 
     target_shape = train_dataset.data['audio_codes'][0].shape
-    descriminator = AudioDescriminator(target_shape, hidden_units = 64, num_hidden_layers = 3, alpha = 0.01, sigmoid_out = True)
+    descriminator = AudioDescriminator(target_shape, hidden_units = 64, num_hidden_layers = 3, alpha = 0.01, sigmoid_out = False)
     descriminator.to(device)
 
 
@@ -115,6 +115,8 @@ def main():
     teacher_forcing_ratio = 0.5 # 50% of the time we will use teacher forcing
     val_epoch_interval = 5
     num_epochs = 30000
+    CLIP_VALUE = 0.01 # weight clipping value for WGAN
+    N_CRITIC = 5 # Number of times to train the discriminator per generator training step
     for epoch in range(num_epochs):
         pose_model.train()
         descriminator.train()
@@ -123,13 +125,11 @@ def main():
 
         total_loss_g = 0  # Total generator loss
         total_loss_d = 0  # Total discriminator loss
-        total_steps = 0  # To track the number of steps
+        total_g_steps = 0  # To track the number of steps
+        total_d_steps = 0  # To track the number of steps
         
         progress_bar = tqdm(enumerate(train_loader), total=len(train_loader))
         for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, _) in progress_bar:            
-            optimizer_g.zero_grad()
-            optimizer_d.zero_grad()
-
             # Forward pass
             wav = wav.unsqueeze(1)
             target = audio_codes.to(device)
@@ -164,66 +164,62 @@ def main():
                 
                 timesteps += 1
 
+            optimizer_d.zero_grad()
             # Train Discriminator on Real Data
-            real_labels = torch.ones(batch_size, 1, device=device)
-            real_output = descriminator(audio_codes.to(device))
-            loss_d_real = criterion_d(real_output, real_labels)
+            real_data = audio_codes.to(device)
+            real_output = descriminator(real_data)
+            loss_d_real = -torch.mean(real_output)
 
             # Train Discriminator on Fake Data
-            fake_data = input_for_next_step
-            fake_labels = torch.zeros(batch_size, 1, device=device)
-            fake_output = descriminator(fake_data.detach())
-            loss_d_fake = criterion_d(fake_output, fake_labels)
+            fake_data = input_for_next_step.detach()
+            fake_output = descriminator(fake_data)
+            loss_d_fake = torch.mean(fake_output)
 
             loss_d = loss_d_real + loss_d_fake
-
-            # Update Generator based on Discriminator's feedback
-            output = descriminator(fake_data)
-            loss_g = criterion_d(output, real_labels) # Train to fool the discriminator
-            avg_nll_loss = total_nll_loss / (target.shape[1] - 1)   
-            loss_g = loss_g + avg_nll_loss
-
-            loss_g_scaled = loss_g + (avg_nll_loss / accumulation_steps)
-            loss_d_scaled = loss_d / accumulation_steps
-
-            # Accumulate gradients
-            loss_g_scaled.backward()
-            loss_d_scaled.backward()
-
-            epoch_loss += (total_loss_g + total_loss_d)
-
-            
-            # Perform gradient step only after accumulation steps
-            if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train_loader):
-                optimizer_g.step()
-                optimizer_d.step()
-
-            total_loss_g += loss_g.item() + avg_nll_loss.item()
+            loss_d.backward()
+            optimizer_d.step()
+            total_d_steps += 1
             total_loss_d += loss_d.item()
-            total_steps += 1
+            avg_epoch_loss_d = total_loss_d / total_d_steps
 
-            avg_batch_loss_g = total_loss_g / total_steps
-            avg_batch_loss_d = total_loss_d / total_steps
+            for p in descriminator.parameters():
+                p.data.clamp_(-CLIP_VALUE, CLIP_VALUE)
 
-            if total_steps % 5 == 0:
-                writer.add_scalar('Loss/Generator/Total', avg_batch_loss_g, epoch * len(train_loader) + i)
-                writer.add_scalar('Loss/Generator/Fool Discriminator', loss_g.item(), epoch * len(train_loader) + i)
-                writer.add_scalar('Loss/Generator/Average NLL', avg_nll_loss.item(), epoch * len(train_loader) + i)
-                writer.add_scalar('Loss/Discriminator', avg_batch_loss_d, epoch * len(train_loader) + i)
-            # print(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_batch_loss_g:.4f}, Discriminator Loss: {avg_batch_loss_d:.4f}", end='')
-            progress_bar.set_description(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_batch_loss_g:.4f}, Discriminator Loss: {avg_batch_loss_d:.4f}")
-            print(f"\rEpoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_batch_loss_g:.4f}, Discriminator Loss: {avg_batch_loss_d:.4f}", end='')
+            if (i + 1) % N_CRITIC == 0:
+                optimizer_g.zero_grad()
+                avg_nll_loss = total_nll_loss / (timesteps)
+
+                fake_data = input_for_next_step
+                fake_output = descriminator(fake_data)
+                adversarial_loss_g = -torch.mean(fake_output)
+
+                combined_loss_g = avg_nll_loss + adversarial_loss_g
+                combined_loss_g.backward()
+                optimizer_g.step()
+
+                total_g_steps += 1
+                total_loss_g += combined_loss_g.item()
+                avg_epoch_loss_g = total_loss_g / total_g_steps
+
+                writer.add_scalar('Loss/Generator/Average_Epcoch_Loss', avg_epoch_loss_g, epoch * len(train_loader) + i)
+                writer.add_scalar('Loss/Generator/NLL_Loss', avg_nll_loss.item(), epoch * len(train_loader) + i)
+                writer.add_scalar('Loss/Generator/Adversarial_Loss', adversarial_loss_g.item(), epoch * len(train_loader) + i)
+                writer.add_scalar('Loss/Discriminator', loss_d.item(), epoch * len(train_loader) + i)
+                writer.add_scalar('Loss/Discriminator/Real', loss_d_real.item(), epoch * len(train_loader) + i)
+                writer.add_scalar('Loss/Discriminator/Fake', loss_d_fake.item(), epoch * len(train_loader) + i)
+
+                # print(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_batch_loss_g:.4f}, Discriminator Loss: {avg_batch_loss_d:.4f}", end='')
+            progress_bar.set_description(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_epoch_loss_g:.4f}, Discriminator Loss: {avg_epoch_loss_d:.4f}")
+            print(f"\rEpoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_epoch_loss_g:.4f}, Discriminator Loss: {avg_epoch_loss_d:.4f}", end='')
 
         # Compute average epoch loss
-        avg_epoch_loss_g = total_loss_g / total_steps
-        avg_epoch_loss_d = total_loss_d / total_steps
         writer.add_scalar('Average Generator Loss', avg_epoch_loss_g, epoch)
         writer.add_scalar('Average Discriminator Loss', avg_epoch_loss_d, epoch)
         print(f"\nEnd of Epoch [{epoch+1}/{num_epochs}], Average Generator Loss: {avg_epoch_loss_g:.4f}, Average Discriminator Loss: {avg_epoch_loss_d:.4f}")
         # Save the best model, by checking if the new model is perfroming better than the previous best model
         
-        if total_loss_g < best_loss:
-            best_loss = total_loss_g
+        if avg_nll_loss < best_loss:
+            best_loss = avg_nll_loss
             g_last_saved_model = save_model(pose_model, weights_dir, best_loss, g_last_saved_model, name='gen_5_sec_dnb_')
             d_last_saved_model = save_model(descriminator, weights_dir, best_loss, d_last_saved_model, name='disc_5_sec_dnb_')
 
