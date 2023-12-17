@@ -8,7 +8,13 @@ class AudioDescriminator(nn.Module):
     def __init__(self, input_size, hidden_units = 64, num_hidden_layers = 3, alpha = 0.01, sigmoid_out = False):
         super(AudioDescriminator, self).__init__()
         self.input_size = input_size[0] * input_size[1]
+        self.seq_length = int(self.input_size/2)
         self.flatten = nn.Flatten()
+        self.codebook_len = 1024
+        self.codebook_embed_size = 3
+        # add embedding layer for audio codes
+        # self.audio_code_embedding = nn.Embedding(self.codebook_len, self.codebook_embed_size)
+        # self.combine_codebook_embeddings = nn.Linear(self.seq_length*self.codebook_embed_size, self.seq_length)
         
         layers = []
         # Input layer
@@ -33,6 +39,11 @@ class AudioDescriminator(nn.Module):
 
 
     def forward(self, x):
+        # l = self.audio_code_embedding(x[:, :, 0].int())
+        # r = self.audio_code_embedding(x[:, :, 1].int())
+        # l = self.combine_codebook_embeddings(self.flatten(l))
+        # r = self.combine_codebook_embeddings(self.flatten(r))
+        # x = torch.cat((l, r), 1)
         x = self.flatten(x)
         x = self.hidden_layers(x)
         x = self.output_layer(x)

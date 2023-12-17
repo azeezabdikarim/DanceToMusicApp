@@ -86,13 +86,20 @@ class Encoder(nn.Module):
             device,
             forward_expansion,
             dropout,
-            max_length
+            max_length,
+            input_size=None
             ):
         super(Encoder, self).__init__()
         self.embed_size = embed_size
         self.device = device
         # self.word_embedding = nn.Embedding(src_vocab_size, embed_size)
         self.position_embedding = nn.Embedding(max_length, embed_size)
+
+        if input_size is not None:
+            # Linear layer to map input features to embedding size
+            self.input_projection = nn.Linear(input_size, embed_size, bias=False)
+        else:
+            self.input_projection = None
 
         self.layers = nn.ModuleList(
             [
@@ -118,6 +125,9 @@ class Encoder(nn.Module):
     def forward(self, x, mask):
         B, seq_length, _ = x.shape
         pos_encoding = self.positional_encoding(seq_length)
+
+        if self.input_projection is not None:
+            x = self.input_projection(x)
 
         out = self.dropout(x + pos_encoding[:, :seq_length, :])
         # out = self.dropout(x)
@@ -319,7 +329,8 @@ class Pose2AudioTransformer(nn.Module):
         heads=8,
         dropout=0,
         device="mps",
-        max_length=2000
+        max_length=2000,
+        input_size = None
     ):
         super(Pose2AudioTransformer, self).__init__()
         self.encoder = Encoder(
@@ -330,7 +341,8 @@ class Pose2AudioTransformer(nn.Module):
             device,
             forward_expansion,
             dropout,
-            max_length
+            max_length,
+            input_size=input_size
         )
 
         self.decoder = Decoder(
