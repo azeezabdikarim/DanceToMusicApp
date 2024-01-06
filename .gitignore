@@ -36,3 +36,4 @@ ml/cuda_memory_track
 
 requirements_mac.txt
 ml/model_weights/
+model_saves/
