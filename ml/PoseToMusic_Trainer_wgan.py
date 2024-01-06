@@ -5,6 +5,7 @@ from tqdm import tqdm
 import pickle as pkl
 import time
 import gc
+import argparse
 
 import torch
 from torch.nn import CrossEntropyLoss, MSELoss
@@ -22,9 +23,8 @@ import torchaudio.transforms as T
 from torch.profiler import profile, record_function, ProfilerActivity
 
 
-
-# Define a function to save the model and delete the last saved model
 def save_model(model, folder_path, loss, last_saved_model, name = ''):
+    # saves the current model weights and deletes the last best model
     model_name = f"{name}_best_model_{loss:.4f}.pt"
     model_path = os.path.join(folder_path, model_name)
     if not os.path.exists(folder_path):
@@ -37,7 +37,23 @@ def save_model(model, folder_path, loss, last_saved_model, name = ''):
             print(f"Warning: Could not find {last_saved_model} to delete.")
     return model_name
 
+def read_config(config_file):
+    config = {}
+    with open(config_file, 'r') as file:
+        for line in file:
+            if ("=" in line) and (not line.startswith("#")):
+                key, value = line.strip().split(' = ')
+                config[key] = value
+    return config
+
 def main():
+    parser = argparse.ArgumentParser(description='Training script for the model.')
+    parser.add_argument('--config', type=str, required=True, help='Path to the config file')
+    args = parser.parse_args()
+
+    config_path = args.config
+    config = read_config(config_path)
+
     # assign GPU or CPU
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
@@ -46,22 +62,25 @@ def main():
     else:
         device = torch.device("cpu")
     # device = torch.device("cpu")
+        
+    if torch.cuda.is_available():
+        torch.cuda.memory._record_memory_history()
 
 
-    model_id = "facebook/encodec_24khz"
+    model_id = config['encodec_model_id']
     encodec_model = EncodecModel.from_pretrained(model_id)
     codebook_size = encodec_model.quantizer.codebook_size
     encodec_model.to('cpu')
     # encodec_model.encoder.to('cpu')
-    # processor = AutoProcessor.from_pretrained(model_id)
     
-    sample_rate = 24000
-    batch_size = 1 # Batch size for Nvididias GTX 3080 9.88/10GB
+    sample_rate = int(config['sample_rate'])
+    batch_size = int(config['batch_size']) # Batch size for Nvididias GTX 3080 9.88/10GB
 
     # data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data'
     # data_dir = "/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_dnb_min_training_data"
     # data_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_test'
-    data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/3sec_24fps_expando_dnb_min_training_data'
+    # data_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/3sec_24fps_expando_dnb_min_training_data'
+    data_dir = config['data_dir']
     train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
     # input_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
     # embed_size = 32
@@ -73,16 +92,16 @@ def main():
     descriminator.to(device)
 
 
-    train_ratio = 0.8 # Define the split ratio
+    train_ratio = float(config['train_ratio']) # Define the split ratio
     val_ratio = 1 - train_ratio
     dataset_size = len(train_dataset)
     train_len = int(train_ratio * dataset_size)
     val_len = dataset_size - train_len
 
     # Randomly split the dataset
-    train_dataset, val_dataset = random_split(train_dataset, [train_len, val_len], generator=torch.Generator().manual_seed(42))
+    random_seed = int(config['random_seed'])
+    train_dataset, val_dataset = random_split(train_dataset, [train_len, val_len], generator=torch.Generator().manual_seed(random_seed))
 
-    # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
@@ -93,11 +112,11 @@ def main():
     pose_model = Pose2AudioTransformer(codebook_size, src_pad_idx, trg_pad_idx, device=device, num_layers=1, heads = 2, embed_size=embed_size, dropout=0.1, input_size = input_size)
     pose_model.to(device)
     
-    # weights = 'DanceToMusicApp/ml/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
-    # weights = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
-    # pose_model.load_state_dict(torch.load(weights, map_location=device))
+    if config['starting_weights_path'] != 'None':
+        weights = config['starting_weights_path']
+        pose_model.load_state_dict(torch.load(weights, map_location=device))
 
-    learning_rate = 1e-4
+    learning_rate = float(config['learning_rate'])
     criterion_g = torch.nn.NLLLoss()
     criterion_d = torch.nn.BCELoss()
     # mel_spectrogram_transform = T.MelSpectrogram(sample_rate=24000, n_fft=2048, hop_length=256, n_mels=64).to(device)
@@ -108,8 +127,7 @@ def main():
 
 
     # Set up for tracking the best model
-    weights_dir = '/home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights'
-    # weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
+    weights_dir = config['weights_dir']
     best_loss = float('inf')  # Initialize with a high value
     g_last_saved_model = ''
     d_last_saved_model = ''
@@ -123,17 +141,17 @@ def main():
     os.makedirs(model_save_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=log_dir)
 
-    accumulation_steps = 12  # Number of mini-batches for gradient accumulation
+    accumulation_steps = int(config['accumulation_steps'])  # Number of mini-batches for gradient accumulation
 
-    teacher_forcing_ratio = 0.5 # 50% of the time we will use teacher forcing
-    val_epoch_interval = 5
-    num_epochs = 30000
-    CLIP_VALUE = 0.01 # weight clipping value for WGAN
-    N_CRITIC = 4 # Number of times to train the discriminator per generator training step
+    teacher_forcing_ratio = float(config['teacher_forcing_ratio']) # 50% of the time we will use teacher forcing
+    val_epoch_interval = int(config['val_epoch_interval']) # 5
+    num_epochs = int(config['num_epochs']) # 30000
+    CLIP_VALUE = float(config['clip_value']) # 0.01 weight clipping value for WGAN
+    N_CRITIC = int(config['n_critic']) # 4 number of times to train the discriminator per generator training step
     for epoch in range(num_epochs):
         pose_model.train()
         descriminator.train()
-        encodec_model.decoder.train()
+        # encodec_model.decoder.train()
         epoch_loss = 0  # Initialize epoch_loss
         timesteps = 0
 
@@ -148,7 +166,11 @@ def main():
         #      record_shapes=True, 
         #      profile_memory=True, 
         #      with_stack=True) as prof:
-        for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, _) in progress_bar:            
+        for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, _) in progress_bar:    
+            optimizer_d.zero_grad()
+            snapshot_filename = f"/home/azeez/Documents/projects/DanceToMusicApp/ml/cuda_memory_track/memory_snapshot_epoch_{epoch}.pickle"
+            torch.cuda.memory._dump_snapshot(snapshot_filename)
+
             # Forward pass
             wav = wav.unsqueeze(1)
             target = audio_codes.to(device)
@@ -164,6 +186,7 @@ def main():
             enc_context = pose_model.encoder(src.view(B, N, -1), enc_mask)
             
             batch_nll_loss = 0
+
             for t in range(1, target.shape[1]):
                 output_softmax, output_argmax, offset, _ = pose_model.decoder(input_for_next_step.to(device), enc_context, enc_mask, trg_mask)
                 
@@ -192,7 +215,6 @@ def main():
             # mel_mse_loss = ((generated_spec[0,:,:,:min_length] - target_spec[:,:,:min_length])**2).mean()
             # mel_mse_loss = mel_mse_loss/200000
 
-            optimizer_d.zero_grad()
             # Train Discriminator on Real Data
             real_data = audio_codes.to(device)
             real_output = descriminator(real_data)
@@ -227,7 +249,7 @@ def main():
                 combined_loss_g.backward()
                 optimizer_g.step()
                 if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
+                    torch.cuda.empty_cache()
 
                 total_g_steps += 1
                 total_loss_g += combined_loss_g.item()
@@ -248,7 +270,10 @@ def main():
                     best_loss = avg_nll_loss
                     g_last_saved_model = save_model(pose_model, weights_dir, best_loss, g_last_saved_model, name='gen_3_sec_dnb_')
                     d_last_saved_model = save_model(descriminator, weights_dir, best_loss, d_last_saved_model, name='disc_3_sec_dnb_')
-                    encodec_last_saved_model = save_model(encodec_model, model_save_dir, best_loss, encodec_last_saved_model, name='encodec_3_sec_dnb_')
+                    # encodec_last_saved_model = save_model(encodec_model, model_save_dir, best_loss, encodec_last_saved_model, name='encodec_3_sec_dnb_')
+
+            if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             gc.collect()
             # writer.add_profile(profiler=prof, global_step=epoch)  # Log to TensorBoard
         # Compute average epoch loss
