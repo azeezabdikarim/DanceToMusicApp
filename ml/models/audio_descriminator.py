@@ -12,9 +12,6 @@ class AudioDescriminator(nn.Module):
         self.flatten = nn.Flatten()
         self.codebook_len = 1024
         self.codebook_embed_size = 3
-        # add embedding layer for audio codes
-        # self.audio_code_embedding = nn.Embedding(self.codebook_len, self.codebook_embed_size)
-        # self.combine_codebook_embeddings = nn.Linear(self.seq_length*self.codebook_embed_size, self.seq_length)
         
         layers = []
         # Input layer

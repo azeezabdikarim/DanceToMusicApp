@@ -26,7 +26,7 @@ pose2audio_dropout = 0.1
 
 # Discriminator parameters
 discriminator_hidden_units = 32
-discriminator_num_hidden_layers = 1
+discriminator_num_hidden_layers = 3
 discriminator_alpha = 0.01
 
 # Training parameters
