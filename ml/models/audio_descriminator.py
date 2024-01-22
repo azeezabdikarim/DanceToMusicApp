@@ -17,12 +17,14 @@ class AudioDescriminator(nn.Module):
         # Input layer
         layers.append(nn.Linear(self.input_size, hidden_units))
         layers.append(nn.LeakyReLU(alpha))
+        layers.append(nn.LayerNorm(hidden_units))
         # layers.append(nn.BatchNorm1d(hidden_units))
 
         # Hidden layers
         for _ in range(num_hidden_layers - 1):
             layers.append(nn.Linear(hidden_units, hidden_units))
             layers.append(nn.LeakyReLU(alpha))
+            layers.append(nn.LayerNorm(hidden_units))
             # layers.append(nn.BatchNorm1d(hidden_units))
 
         self.hidden_layers = nn.Sequential(*layers)

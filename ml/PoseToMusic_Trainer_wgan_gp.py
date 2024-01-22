@@ -38,7 +38,8 @@ def save_model(model, folder_path, loss, last_saved_model, name = ''):
             print(f"Warning: Could not find {last_saved_model} to delete.")
     return model_name
 
-def main():
+
+def train():
     args = parse_args()
 
     # assign GPU or CPU
@@ -137,7 +138,7 @@ def main():
     teacher_forcing_ratio = args.teacher_forcing_ratio # 50% of the time we will use teacher forcing
     val_epoch_interval = args.val_epoch_interval # 5
     num_epochs = args.num_epochs 
-    CLIP_VALUE = args.clip_value # 0.01 weight clipping value for WGAN
+    # CLIP_VALUE = args.clip_value # 0.01 weight clipping value for WGAN
     N_CRITIC = args.n_critic # number of times to train the discriminator per generator training step
 
     rolling_mel_mse_loss = []
@@ -199,30 +200,40 @@ def main():
                 total_timesteps += 1*B # Increment the timesteps by the batch size so that we can accuratly calculate the average loss per timestep
                 batch_time_steps += 1*B
 
-            # Train Discriminator on Real Data
-            real_data = audio_codes.to(device)
-            real_output = descriminator(real_data)
-            loss_d_real = -torch.mean(real_output)
+            # Train Discriminator
+            optimizer_d.zero_grad()
 
-            # Train Discriminator on Fake Data
+            real_data = audio_codes.to(device)
             fake_data = input_for_next_step.detach()
+
+            real_output = descriminator(real_data)
             fake_output = descriminator(fake_data)
+
+            loss_d_real = -torch.mean(real_output)
             loss_d_fake = torch.mean(fake_output)
 
-            loss_d = loss_d_real + loss_d_fake
+            gradient_penalty = compute_gradient_penalty(descriminator, real_data.data, fake_data.data, device)
+            lambda_gp = 5  # Lambda for gradient penalty
+            loss_gp = lambda_gp * gradient_penalty
+
+            loss_d = loss_d_fake + loss_d_real + loss_gp
             loss_d.backward()
+            # Calculate and log the gradient norms
+            total_norm_d, layer_norms_d = calculate_gradient_norm_layers(descriminator)
+            writer.add_scalar('D_Gradient_Norms/D_Total', total_norm_d, epoch * len(train_loader) + i)
+            for name, norm in layer_norms_d.items():
+                writer.add_scalar(f'D_Gradient_Norms/D_Layer_{name}', norm, epoch * len(train_loader) + i)
+
             optimizer_d.step()
+
             total_d_steps += 1
             total_loss_d += loss_d.detach().item()
             avg_epoch_loss_d = total_loss_d / total_d_steps
 
-            for p in descriminator.parameters():
-                p.data.clamp_(-CLIP_VALUE, CLIP_VALUE)
-
             writer.add_scalar('Loss_Discriminator', loss_d.item(), epoch * len(train_loader) + i)
             writer.add_scalar('Loss_Discriminator/Real', loss_d_real.item(), epoch * len(train_loader) + i)
             writer.add_scalar('Loss_Discriminator/Fake', loss_d_fake.item(), epoch * len(train_loader) + i)
-
+            writer.add_scalar('Loss_Discriminator/Gradient_Penalty', loss_gp.item(), epoch * len(train_loader) + i)
 
             if (i + 1) % N_CRITIC == 0:
                 # Calculate perceptual loss. derive it by comparing the generated vs target mel spectrgorams 
@@ -257,6 +268,12 @@ def main():
 
                 combined_loss_g = (batch_nll_loss) + adversarial_loss_g + (scaled_mel_mse_loss)
                 combined_loss_g.backward()
+
+                total_norm_g, layer_norms_g = calculate_gradient_norm_layers(pose_model)
+                writer.add_scalar('G_Gradient_Norms/G_Total', total_norm_g, epoch * len(train_loader) + i)
+                for name, norm in layer_norms_g.items():
+                    writer.add_scalar(f'G_Gradient_Norms/G_Layer_{name}', norm, epoch * len(train_loader) + i)
+
                 optimizer_g.step()
 
                 if torch.cuda.is_available():
@@ -340,4 +357,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    train()

@@ -19,7 +19,6 @@ from utils import DanceToMusic
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import random_split
 from utils.loss_helpers import *
-from utils.training_setup_utils import *
 import torchaudio.transforms as T
 from torch.profiler import profile, record_function, ProfilerActivity
 
@@ -38,22 +37,48 @@ def save_model(model, folder_path, loss, last_saved_model, name = ''):
             print(f"Warning: Could not find {last_saved_model} to delete.")
     return model_name
 
+def read_config(config_file):
+    config = {}
+    with open(config_file, 'r') as file:
+        for line in file:
+            if ("=" in line) and (not line.startswith("#")):
+                key, value = line.strip().split(' = ')
+                config[key] = value
+    return config
+
 def main():
-    args = parse_args()
+    parser = argparse.ArgumentParser(description='Training script for the model.')
+    parser.add_argument('--config', type=str, required=True, help='Path to the config file')
+    args = parser.parse_args()
+
+    config_path = args.config
+    config = read_config(config_path)
 
     # assign GPU or CPU
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
     else:
         device = torch.device("cpu")
+    # device = torch.device("cpu")
+        
+    # if torch.cuda.is_available():
+    #     torch.cuda.memory._record_memory_history()
 
-    model_id = args.encodec_model_id
+
+    model_id = config['encodec_model_id']
     encodec_model = EncodecModel.from_pretrained(model_id)
     codebook_size = encodec_model.quantizer.codebook_size
     encodec_model.to(device)
-    sample_rate = args.sample_rate
+    # encodec_model.to('cpu')
+    # encodec_model.encoder.to('cpu')
+    
+    sample_rate = int(config['sample_rate'])
+    batch_size = int(config['batch_size']) # Batch size for Nvididias GTX 3080 9.88/10GB
 
-    data_dir = args.data_dir
+
+    data_dir = config['data_dir']
     train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
     # input_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
     # embed_size = 32
@@ -61,9 +86,9 @@ def main():
     embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]    
     target_shape = train_dataset.data['audio_codes'][0].shape
 
-    discriminator_hidden_units = args.discriminator_hidden_units
-    discriminator_num_hidden_layers = args.discriminator_num_hidden_layers
-    discriminator_alpha = args.discriminator_alpha
+    discriminator_hidden_units = int(config['discriminator_hidden_units'])
+    discriminator_num_hidden_layers = int(config['discriminator_num_hidden_layers'])
+    discriminator_alpha = float(config['discriminator_alpha'])
     descriminator = AudioDescriminator(target_shape, 
                                        hidden_units = discriminator_hidden_units, 
                                        num_hidden_layers = discriminator_num_hidden_layers, 
@@ -72,45 +97,51 @@ def main():
     descriminator.to(device)
 
 
-    train_ratio = args.train_ratio # Define the split ratio
+    train_ratio = float(config['train_ratio']) # Define the split ratio
+    val_ratio = 1 - train_ratio
     dataset_size = len(train_dataset)
     train_len = int(train_ratio * dataset_size)
     val_len = dataset_size - train_len
 
     # Randomly split the dataset
-    random_seed = args.random_seed
+    random_seed = int(config['random_seed'])
     train_dataset, val_dataset = random_split(train_dataset, [train_len, val_len], generator=torch.Generator().manual_seed(random_seed))
-    
-    batch_size = args.batch_size 
+
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
 
     
     src_pad_idx = 0
     trg_pad_idx = 0
+    # device = torch.device("cpu")
+    pose2audio_num_layers = int(config['pose2audio_num_layers'])
+    pose2audio_num_heads = int(config['pose2audio_num_heads'])
+    pose2audio_dropout = float(config['pose2audio_dropout'])
     pose_model = Pose2AudioTransformer(codebook_size, src_pad_idx, trg_pad_idx, 
                                        device = device, 
-                                       num_layers = args.pose2audio_num_layers, 
-                                       heads = args.pose2audio_num_heads, 
+                                       num_layers = pose2audio_num_layers, 
+                                       heads = pose2audio_num_heads, 
                                        embed_size = embed_size, 
-                                       dropout = args.pose2audio_dropout, 
+                                       dropout = pose2audio_dropout, 
                                        input_size = input_size)
     pose_model.to(device)
     
-    # Load the starting weights if provided ex. earlier checkpoitn
-    if args.starting_weights_path != None:
-        weights = args.starting_weights_path
+    if config['starting_weights_path'] != 'None':
+        weights = config['starting_weights_path']
         pose_model.load_state_dict(torch.load(weights, map_location=device))
 
-    learning_rate = args.learning_rate
+    learning_rate = float(config['learning_rate'])
     criterion_g = torch.nn.NLLLoss()
+    criterion_d = torch.nn.BCELoss()
     mel_spectrogram_transform = T.MelSpectrogram(sample_rate=24000, n_fft=2048, hop_length=256, n_mels=64).to(device)
 
-    # Prepare encodec model for training, freeze all parameters except the final conv1d layer of the decoder    
+    # freeze all parameters of the encoded model
     for param in encodec_model.parameters():
-        param.requires_grad = False # freeze all parameters of the encoded model
+        param.requires_grad = False
+
+    # unfreeze just the final conv1d layer of the encodec decoder 
     for param in encodec_model.decoder.layers[-1].parameters(): 
-        param.requires_grad = True # unfreeze just the final conv1d layer of the encodec decoder 
+        param.requires_grad = True
 
     # criterion = MSELoss()
     generator_params = list(pose_model.parameters()) + list(encodec_model.decoder.layers[-1].parameters())
@@ -120,7 +151,7 @@ def main():
 
 
     # Set up for tracking the best model
-    weights_dir = args.weights_dir
+    weights_dir = config['weights_dir']
     best_loss = float('inf')  # Initialize with a high value
     g_last_saved_model = ''
     d_last_saved_model = ''
@@ -134,20 +165,19 @@ def main():
     os.makedirs(model_save_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=log_dir)
 
-    teacher_forcing_ratio = args.teacher_forcing_ratio # 50% of the time we will use teacher forcing
-    val_epoch_interval = args.val_epoch_interval # 5
-    num_epochs = args.num_epochs 
-    CLIP_VALUE = args.clip_value # 0.01 weight clipping value for WGAN
-    N_CRITIC = args.n_critic # number of times to train the discriminator per generator training step
+    accumulation_steps = int(config['accumulation_steps'])  # Number of mini-batches for gradient accumulation
+    teacher_forcing_ratio = float(config['teacher_forcing_ratio']) # 50% of the time we will use teacher forcing
+    val_epoch_interval = int(config['val_epoch_interval']) # 5
+    num_epochs = int(config['num_epochs']) # 30000
+    N_CRITIC = int(config['n_critic']) # 4 number of times to train the discriminator per generator training step
 
     rolling_mel_mse_loss = []
-    rolling_batch_nll_loss = []
     for epoch in range(num_epochs):
         pose_model.train()
         descriminator.train()
         encodec_model.decoder.train()
         epoch_loss = 0  # Initialize epoch_loss
-        total_timesteps = 0
+        timesteps = 0
 
         total_loss_g = 0  # Total generator loss
         total_loss_d = 0  # Total discriminator loss
@@ -157,7 +187,6 @@ def main():
 
         progress_bar = tqdm(enumerate(train_loader), total=len(train_loader))
         for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, _) in progress_bar:    
-            optimizer_d.zero_grad()
             # snapshot_filename = os.path.join(model_save_dir, f"memory_snapshot_epoch_{epoch}.pickle")
             # torch.cuda.memory._dump_snapshot(snapshot_filename)
 
@@ -176,7 +205,6 @@ def main():
             enc_context = pose_model.encoder(src.view(B, N, -1), enc_mask)
             
             batch_nll_loss = 0
-            batch_time_steps = 0
 
             for t in range(1, target.shape[1]):
                 output_softmax, output_argmax, offset, _ = pose_model.decoder(input_for_next_step.to(device), enc_context, enc_mask, trg_mask)
@@ -196,36 +224,39 @@ def main():
                     input_for_next_step = torch.cat([input_for_next_step, next_token.unsqueeze(1)], dim=1)
                 trg_mask = pose_model.make_trg_mask(input_for_next_step.to(device))
                 
-                total_timesteps += 1*B # Increment the timesteps by the batch size so that we can accuratly calculate the average loss per timestep
-                batch_time_steps += 1*B
+                timesteps += 1*B # Increment the timesteps by the batch size so that we can accuratly calculate the average loss per timestep
 
-            # Train Discriminator on Real Data
+            # Train Discriminator
+            optimizer_d.zero_grad()
+
             real_data = audio_codes.to(device)
-            real_output = descriminator(real_data)
-            loss_d_real = -torch.mean(real_output)
-
-            # Train Discriminator on Fake Data
             fake_data = input_for_next_step.detach()
+
+            real_output = descriminator(real_data)
             fake_output = descriminator(fake_data)
+
+            loss_d_real = -torch.mean(real_output)
             loss_d_fake = torch.mean(fake_output)
 
-            loss_d = loss_d_real + loss_d_fake
+            gradient_penalty = compute_gradient_penalty(descriminator, real_data.data, fake_data.data, device)
+            lambda_gp = 10  # Lambda for gradient penalty
+            loss_gp = lambda_gp * gradient_penalty
+
+            loss_d = loss_d_fake + loss_d_real + loss_gp
             loss_d.backward()
             optimizer_d.step()
+
             total_d_steps += 1
             total_loss_d += loss_d.detach().item()
             avg_epoch_loss_d = total_loss_d / total_d_steps
 
-            for p in descriminator.parameters():
-                p.data.clamp_(-CLIP_VALUE, CLIP_VALUE)
-
             writer.add_scalar('Loss_Discriminator', loss_d.item(), epoch * len(train_loader) + i)
             writer.add_scalar('Loss_Discriminator/Real', loss_d_real.item(), epoch * len(train_loader) + i)
             writer.add_scalar('Loss_Discriminator/Fake', loss_d_fake.item(), epoch * len(train_loader) + i)
-
+            writer.add_scalar('Loss_Discriminator/Gradient_Penalty', loss_gp.item(), epoch * len(train_loader) + i)
 
             if (i + 1) % N_CRITIC == 0:
-                # Calculate perceptual loss. derive it by comparing the generated vs target mel spectrgorams 
+                # Calculate perceptual derived by comparing the generated vs target spectrgorams 
                 optimizer_g.zero_grad()
                 generated_wav = audioCodeToWav(input_for_next_step, encodec_model, sample_rate = 24000)
                 generated_spec = mel_spectrogram_transform(generated_wav)
@@ -234,31 +265,32 @@ def main():
                 mel_mse_loss = ((generated_spec[:,:,:,:min_length] - target_spec[:,:,:,:min_length])**2).mean()
                 mel_mse_loss = mel_mse_loss
 
-                avg_nll_loss = epoch_total_nll_loss / (total_timesteps)
-                batch_nll_loss = batch_nll_loss / (batch_time_steps)
+                avg_nll_loss = epoch_total_nll_loss / (timesteps)
+                batch_nll_loss = batch_nll_loss / (timesteps)
 
                 fake_data = input_for_next_step
                 fake_output = descriminator(fake_data)
                 adversarial_loss_g = -torch.mean(fake_output)
-                
-                # NLL Loss on the generated audio codes and the perceptual loss from the mel spectrograms are scaled
-                # strategy: scale the loss value by the average of the last 20 loss values 
+
                 if len(rolling_mel_mse_loss) < 20:
                     rolling_mel_mse_loss.append(mel_mse_loss.detach().item())
-                    rolling_batch_nll_loss.append(batch_nll_loss.detach().item())
                 else:
                     rolling_mel_mse_loss.pop(0)
-                    rolling_batch_nll_loss.pop(0)
                     rolling_mel_mse_loss.append(mel_mse_loss.detach().item())
-                    rolling_batch_nll_loss.append(batch_nll_loss.detach().item())
                 
                 # take the average of a list
                 scaled_mel_mse_loss = mel_mse_loss / (sum(rolling_mel_mse_loss)/len(rolling_mel_mse_loss))
 
-                combined_loss_g = (batch_nll_loss) + adversarial_loss_g + (scaled_mel_mse_loss)
+                combined_loss_g = (10*batch_nll_loss) + adversarial_loss_g + (scaled_mel_mse_loss)
                 combined_loss_g.backward()
-                optimizer_g.step()
 
+                total_norm_g, layer_norms_g = calculate_gradient_norms(pose_model)
+                writer.add_scalar('Gradient_Norms/Generator_Total', total_norm_g, epoch * len(train_loader) + i)
+                for name, norm in layer_norms_g.items():
+                    writer.add_scalar(f'Gradient_Norms/Generator_{name}', norm, epoch * len(train_loader) + i)
+
+                optimizer_g.step()
+                
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
@@ -267,8 +299,8 @@ def main():
                 avg_epoch_loss_g = total_loss_g / total_g_steps
 
                 writer.add_scalar('Loss_Generator/1_Combined_Loss', combined_loss_g.item(), epoch * len(train_loader) + i)
-                writer.add_scalar('Loss_Generator/2_Batch_NLL_Loss', batch_nll_loss.item(), epoch * len(train_loader) + i)
-                writer.add_scalar('Loss_Generator/3_Mel_MSE_Loss_Scaled', scaled_mel_mse_loss.item(), epoch * len(train_loader) + i)
+                writer.add_scalar('Loss_Generator/2_Batch_NLL_Loss', 10*batch_nll_loss.item(), epoch * len(train_loader) + i)
+                writer.add_scalar('Loss_Generator/3_Mel_MSE_Loss_Scaled', (scaled_mel_mse_loss), epoch * len(train_loader) + i)
                 writer.add_scalar('Loss_Generator/4_Adversarial_Loss', adversarial_loss_g.item(), epoch * len(train_loader) + i)
                 writer.add_scalar('Loss_Generator/5_Average_Epcoch_Loss', avg_epoch_loss_g, epoch * len(train_loader) + i)
 
