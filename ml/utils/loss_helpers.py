@@ -43,3 +43,42 @@ def log_gradients(model, step, writer, tag_prefix='Gradients'):
     for name, parameter in model.named_parameters():
         if parameter.grad is not None:
             writer.add_histogram(f'{tag_prefix}/{name}', parameter.grad, step)
+
+def compute_gradient_penalty(D, real_samples, fake_samples, device):
+    # Random weight term for interpolation between real and fake samples
+    alpha = torch.rand((real_samples.size(0), 1, 1), device=device)
+    # Get random interpolation between real and fake samples
+    interpolates = (alpha * real_samples + ((1 - alpha) * fake_samples)).requires_grad_(True)
+    d_interpolates = D(interpolates)
+    fake = torch.ones(d_interpolates.size(), requires_grad=False, device=device)
+    # Get gradient w.r.t. interpolates
+    gradients = torch.autograd.grad(
+        outputs=d_interpolates,
+        inputs=interpolates,
+        grad_outputs=fake,
+        create_graph=True,
+        retain_graph=True,
+        only_inputs=True,
+    )[0]
+    gradients = gradients.view(gradients.size(0), -1)
+    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+    return gradient_penalty
+
+def calculate_gradient_norms(model):
+    total_norm = 0
+    for p in model.parameters():
+        param_norm = p.grad.data.norm(2)
+        total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** 0.5
+    return total_norm
+
+def calculate_gradient_norm_layers(model):
+    layer_norms = {}
+    total_norm = 0
+    for name, p in model.named_parameters():
+        if p.grad is not None:
+            param_norm = p.grad.data.norm(2)
+            layer_norms[name] = param_norm.item()
+            total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** 0.5
+    return total_norm, layer_norms
