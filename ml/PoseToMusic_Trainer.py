@@ -129,7 +129,7 @@ def main():
         total_loss_d = 0  # Total discriminator loss
         total_steps = 0  # To track the number of steps
 
-        for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, _) in tqdm(enumerate(train_loader), total=len(train_loader)):
+        for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, vid_path, _) in tqdm(enumerate(train_loader), total=len(train_loader)):
             optimizer_g.zero_grad()  # Clear gradients
             
             # Forward pass
@@ -220,7 +220,7 @@ def main():
             val_steps = 0
 
             with torch.no_grad():
-                for audio_codes, pose, pose_mask, wav, wav_mask, _, _ in val_loader:
+                for audio_codes, pose, pose_mask, wav, wav_mask, _, vid_path, _ in val_loader:
                     target = audio_codes.to(device)
                     input_for_next_step = target[:, 0:1, :]
                     
