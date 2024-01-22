@@ -28,12 +28,13 @@ class DanceToMusic(Dataset):
         sample_rate = self.data['sample_rate'][idx]
         pose_mask = self.data['pose_padding_mask'][idx]
         wav_mask = self.data['audio_padding_mask'][idx]
+        vid_path = self.data['video_paths'][idx]
 
         if 'audio_codes' not in self.data.keys():
-            return [pose, pose_mask, wav, wav_mask, wav_path, sample_rate]
+            return [pose, pose_mask, wav, wav_mask, wav_path, vid_path, sample_rate]
         
         audio_codes = self.data['audio_codes'][idx]
-        return [audio_codes, pose, pose_mask, wav, wav_mask, wav_path, sample_rate]
+        return [audio_codes, pose, pose_mask, wav, wav_mask, wav_path, vid_path, sample_rate]
 
     def _load_data(self, directory, sr, num_samples, dnb):
         poses = []
@@ -42,6 +43,7 @@ class DanceToMusic(Dataset):
         sample_rate = []
         count_loaded_sample = 0
         audio_codes = []
+        video_paths = []
         for root, dirs, files in os.walk(directory):
             for d in dirs:
                 if 'error' not in d and 'spleeter' not in os.path.join(root,d):
@@ -50,11 +52,17 @@ class DanceToMusic(Dataset):
                         wav_path = os.path.join(root, d, f"{d[:-7]}_drum_and_bass.wav")
                     else:
                         wav_path = os.path.join(root, d, f"{d[:-7]}.wav")
+                    
+                    vid_path = os.path.join(root, d, f"{d[:-7]}.mp4")
+                    if not os.path.exists(vid_path):
+                        vid_path = ''
+                    video_paths.append(vid_path)
 
                     audio_code_path = wav_path.replace('.wav', '_audio_code.npy')
                     if os.path.exists(audio_code_path):
                         audio_code = np.load(audio_code_path)
                         audio_codes.append(audio_code)
+
                     # poses.append(self._buildPoses(pose_dir_path))
                     poses.append(np.load(pose_path))
                     wav, sr = librosa.load(wav_path, sr=sr)
@@ -69,7 +77,8 @@ class DanceToMusic(Dataset):
             "poses": poses,
             "wavs": wavs,
             "wav_paths": wav_paths,
-            "sample_rate": sample_rate
+            "sample_rate": sample_rate,
+            "video_paths":video_paths
         }
         if len(audio_codes) > 0:
             ret['audio_codes'] = audio_codes
@@ -95,6 +104,7 @@ class DanceToMusic(Dataset):
         data = {}
         data['wav_paths'] = raw_data['wav_paths']
         data['sample_rate'] =  raw_data['sample_rate']
+        data['video_paths'] = raw_data['video_paths']
         if 'audio_codes' in raw_data.keys():
             data['audio_codes'] = raw_data['audio_codes']
         

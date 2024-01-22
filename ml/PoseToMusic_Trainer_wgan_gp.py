@@ -8,6 +8,8 @@ import gc
 import argparse
 
 import torch
+import torchaudio
+import moviepy.editor as mp
 from torch.nn import CrossEntropyLoss, MSELoss
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
@@ -26,7 +28,7 @@ from torch.profiler import profile, record_function, ProfilerActivity
 
 def save_model(model, folder_path, loss, last_saved_model, name = ''):
     # saves the current model weights and deletes the last best model
-    model_name = f"{name}_best_model_{loss:.4f}.pt"
+    model_name = f"{name}_loss_{loss:.4f}.pt"
     model_path = os.path.join(folder_path, model_name)
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
@@ -37,6 +39,29 @@ def save_model(model, folder_path, loss, last_saved_model, name = ''):
         except FileNotFoundError:
             print(f"Warning: Could not find {last_saved_model} to delete.")
     return model_name
+
+def save_valdiation_sample(audio_code, encodec_model, video_path, epoch, save_dir, sr = 24000):
+    wav = audioCodeToWav(audio_code.unsqueeze(0).unsqueeze(-1), encodec_model, sample_rate = sr)
+    audio_output_path = os.path.join(save_dir, f"generated_audio_epoch_{epoch+1}.wav")
+    torchaudio.save(audio_output_path, wav, 24000)
+
+    if os.path.exists(video_path):
+        # Combine the video and the generated audio
+        video_clip = mp.VideoFileClip(video_path)
+        audio_clip = mp.AudioFileClip(audio_output_path)
+        final_clip = video_clip.set_audio(audio_clip)
+        
+        output_video_path = os.path.join(save_dir, f"video_with_generated_audio_epoch_{epoch+1}.mp4")
+        final_clip.write_videofile(output_video_path, codec='libx264', audio_codec='aac')
+
+    debug_video = video_path.replace(".mpg", "_with_audio.mp4")
+    if os.path.exists(debug_video):
+        video_clip = mp.VideoFileClip(debug_video)
+        audio_clip = mp.AudioFileClip(audio_output_path)
+        final_clip = video_clip.set_audio(audio_clip)
+        
+        output_debug_video_path = os.path.join(save_dir, f"debug_video_with_generated_audio_epoch_{epoch+1}.mp4")
+        final_clip.write_videofile(output_debug_video_path, codec='libx264', audio_codec='aac')
 
 
 def train():
@@ -157,7 +182,7 @@ def train():
         epoch_total_nll_loss = 0
 
         progress_bar = tqdm(enumerate(train_loader), total=len(train_loader))
-        for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, _) in progress_bar:    
+        for i, (audio_codes, pose, pose_mask, wav, wav_mask, wav_path, vid_path, _) in progress_bar:    
             optimizer_d.zero_grad()
             # snapshot_filename = os.path.join(model_save_dir, f"memory_snapshot_epoch_{epoch}.pickle")
             # torch.cuda.memory._dump_snapshot(snapshot_filename)
@@ -266,7 +291,7 @@ def train():
                 # take the average of a list
                 scaled_mel_mse_loss = mel_mse_loss / (sum(rolling_mel_mse_loss)/len(rolling_mel_mse_loss))
 
-                combined_loss_g = (batch_nll_loss) + adversarial_loss_g + (scaled_mel_mse_loss)
+                combined_loss_g = (batch_nll_loss) + adversarial_loss_g + scaled_mel_mse_loss
                 combined_loss_g.backward()
 
                 total_norm_g, layer_norms_g = calculate_gradient_norm_layers(pose_model)
@@ -289,15 +314,8 @@ def train():
                 writer.add_scalar('Loss_Generator/4_Adversarial_Loss', adversarial_loss_g.item(), epoch * len(train_loader) + i)
                 writer.add_scalar('Loss_Generator/5_Average_Epcoch_Loss', avg_epoch_loss_g, epoch * len(train_loader) + i)
 
-                # print(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_batch_loss_g:.4f}, Discriminator Loss: {avg_batch_loss_d:.4f}", end='')
                 progress_bar.set_description(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_epoch_loss_g:.4f}, Discriminator Loss: {avg_epoch_loss_d:.4f}")
                 print(f"\rEpoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {combined_loss_g:.4f}, Discriminator Loss: {avg_epoch_loss_d:.4f}", end='')
-                
-                if batch_nll_loss < best_loss:
-                    best_loss = batch_nll_loss
-                    g_last_saved_model = save_model(pose_model, model_save_dir, best_loss, g_last_saved_model, name='gen_3_sec_dnb_')
-                    d_last_saved_model = save_model(descriminator, model_save_dir, best_loss, d_last_saved_model, name='disc_3_sec_dnb_')
-                    encodec_last_saved_model = save_model(encodec_model, model_save_dir, best_loss, encodec_last_saved_model, name='encodec_3_sec_dnb_')
             
             if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -316,7 +334,7 @@ def train():
             val_steps = 0
 
             with torch.no_grad():
-                for audio_codes, pose, pose_mask, wav, wav_mask, _, _ in val_loader:
+                for audio_codes, pose, pose_mask, wav, wav_mask, wav_path, vid_path, _ in val_loader:
                     target = audio_codes.to(device)
                     input_for_next_step = target[:, 0:1, :]
                     
@@ -348,6 +366,16 @@ def train():
                 avg_val_loss = val_loss / val_steps
                 writer.add_scalar('Validation Loss', avg_val_loss, epoch)
                 print(f"\n Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}")
+
+                # Save a model checkpoint and validation sample
+                best_loss = batch_nll_loss
+                epoch_model_save_dir = os.path.join(model_save_dir, f"epoch_{epoch+1}")
+                g_last_saved_model = save_model(pose_model, epoch_model_save_dir, batch_nll_loss, g_last_saved_model, name='gen_3_sec_dnb_')
+                d_last_saved_model = save_model(descriminator, epoch_model_save_dir, batch_nll_loss, d_last_saved_model, name='disc_3_sec_dnb_')
+                encodec_last_saved_model = save_model(encodec_model, epoch_model_save_dir, batch_nll_loss, encodec_last_saved_model, name='encodec_3_sec_dnb_')
+                
+                val_audio_code = input_for_next_step
+                save_valdiation_sample(val_audio_code[-1], encodec_model, vid_path[-1], epoch, epoch_model_save_dir)
         else:
             print(f"\n Epoch [{epoch+1}/{num_epochs}]")
         if torch.cuda.is_available():

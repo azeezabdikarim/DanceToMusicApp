@@ -156,7 +156,7 @@ def main():
         epoch_total_nll_loss = 0
 
         progress_bar = tqdm(enumerate(train_loader), total=len(train_loader))
-        for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, _) in progress_bar:    
+        for i, (audio_codes, pose, pose_mask, wav, wav_mask, _, vid_path, _) in progress_bar:    
             optimizer_d.zero_grad()
             # snapshot_filename = os.path.join(model_save_dir, f"memory_snapshot_epoch_{epoch}.pickle")
             # torch.cuda.memory._dump_snapshot(snapshot_filename)
@@ -299,7 +299,7 @@ def main():
             val_steps = 0
 
             with torch.no_grad():
-                for audio_codes, pose, pose_mask, wav, wav_mask, _, _ in val_loader:
+                for audio_codes, pose, pose_mask, wav, wav_mask, _, vid_path, _ in val_loader:
                     target = audio_codes.to(device)
                     input_for_next_step = target[:, 0:1, :]
                     
