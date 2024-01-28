@@ -8,18 +8,19 @@ import gc
 import argparse
 
 import torch
+import shutil
 from torch.nn import CrossEntropyLoss, MSELoss
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
 from datetime import datetime
 from torch.optim import Adam
 from transformers import EncodecModel
-from models import Pose2AudioTransformer, AudioDescriminator
+from models import Pose2AudioTransformer, AudioCodeDiscriminator, MelSpectrogramDiscriminator
 from utils import DanceToMusic
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import random_split
 from utils.loss_helpers import *
-from utils.training_setup_utils import *
+from DanceToMusicApp.ml.utils.training_utils import *
 import torchaudio.transforms as T
 from torch.profiler import profile, record_function, ProfilerActivity
 
@@ -64,12 +65,12 @@ def main():
     discriminator_hidden_units = args.discriminator_hidden_units
     discriminator_num_hidden_layers = args.discriminator_num_hidden_layers
     discriminator_alpha = args.discriminator_alpha
-    descriminator = AudioDescriminator(target_shape, 
+    discriminator = AudioCodeDiscriminator(target_shape, 
                                        hidden_units = discriminator_hidden_units, 
                                        num_hidden_layers = discriminator_num_hidden_layers, 
                                        alpha = discriminator_alpha, 
                                        sigmoid_out = False)
-    descriminator.to(device)
+    discriminator.to(device)
 
 
     train_ratio = args.train_ratio # Define the split ratio
@@ -116,7 +117,7 @@ def main():
     generator_params = list(pose_model.parameters()) + list(encodec_model.decoder.layers[-1].parameters())
     optimizer_g = torch.optim.Adam(generator_params, lr=learning_rate)
     # optimizer_g = torch.optim.Adam(pose_model.parameters(), lr=learning_rate)
-    optimizer_d = torch.optim.Adam(descriminator.parameters(), lr=learning_rate)
+    optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=learning_rate)
 
 
     # Set up for tracking the best model
@@ -129,8 +130,11 @@ def main():
     # Generate a unique directory name based on current date and time
     current_time = datetime.now().strftime('%Y%m%d-%H%M%S')
     log_dir = os.path.join('./my_logs', 'run_' + current_time)
+    config_dr = os.path.join(log_dir, 'config_file')
     os.makedirs(log_dir, exist_ok=True)
-    model_save_dir = os.path.join('./model_saves', 'run_' + current_time)
+    os.makedirs(config_dr, exist_ok=True)
+    shutil.copy(args.config, config_dr)
+    model_save_dir = os.path.join(log_dir,'model_saves_and_validation_samples')
     os.makedirs(model_save_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=log_dir)
 
@@ -144,7 +148,7 @@ def main():
     rolling_batch_nll_loss = []
     for epoch in range(num_epochs):
         pose_model.train()
-        descriminator.train()
+        discriminator.train()
         encodec_model.decoder.train()
         epoch_loss = 0  # Initialize epoch_loss
         total_timesteps = 0
@@ -201,12 +205,12 @@ def main():
 
             # Train Discriminator on Real Data
             real_data = audio_codes.to(device)
-            real_output = descriminator(real_data)
+            real_output = discriminator(real_data)
             loss_d_real = -torch.mean(real_output)
 
             # Train Discriminator on Fake Data
             fake_data = input_for_next_step.detach()
-            fake_output = descriminator(fake_data)
+            fake_output = discriminator(fake_data)
             loss_d_fake = torch.mean(fake_output)
 
             loss_d = loss_d_real + loss_d_fake
@@ -216,7 +220,7 @@ def main():
             total_loss_d += loss_d.detach().item()
             avg_epoch_loss_d = total_loss_d / total_d_steps
 
-            for p in descriminator.parameters():
+            for p in discriminator.parameters():
                 p.data.clamp_(-CLIP_VALUE, CLIP_VALUE)
 
             writer.add_scalar('Loss_Discriminator', loss_d.item(), epoch * len(train_loader) + i)
@@ -238,7 +242,7 @@ def main():
                 batch_nll_loss = batch_nll_loss / (batch_time_steps)
 
                 fake_data = input_for_next_step
-                fake_output = descriminator(fake_data)
+                fake_output = discriminator(fake_data)
                 adversarial_loss_g = -torch.mean(fake_output)
                 
                 # NLL Loss on the generated audio codes and the perceptual loss from the mel spectrograms are scaled
@@ -275,12 +279,6 @@ def main():
                 # print(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_batch_loss_g:.4f}, Discriminator Loss: {avg_batch_loss_d:.4f}", end='')
                 progress_bar.set_description(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {avg_epoch_loss_g:.4f}, Discriminator Loss: {avg_epoch_loss_d:.4f}")
                 print(f"\rEpoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Generator Loss: {combined_loss_g:.4f}, Discriminator Loss: {avg_epoch_loss_d:.4f}", end='')
-                
-                if batch_nll_loss < best_loss:
-                    best_loss = batch_nll_loss
-                    g_last_saved_model = save_model(pose_model, model_save_dir, best_loss, g_last_saved_model, name='gen_3_sec_dnb_')
-                    d_last_saved_model = save_model(descriminator, model_save_dir, best_loss, d_last_saved_model, name='disc_3_sec_dnb_')
-                    encodec_last_saved_model = save_model(encodec_model, model_save_dir, best_loss, encodec_last_saved_model, name='encodec_3_sec_dnb_')
             
             if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -295,11 +293,12 @@ def main():
         
         if epoch % val_epoch_interval == 0:
             pose_model.eval()
+            encodec_model.eval()
             val_loss = 0
             val_steps = 0
 
             with torch.no_grad():
-                for audio_codes, pose, pose_mask, wav, wav_mask, _, vid_path, _ in val_loader:
+                for audio_codes, pose, pose_mask, wav, wav_mask, wav_path, vid_path, _ in val_loader:
                     target = audio_codes.to(device)
                     input_for_next_step = target[:, 0:1, :]
                     
@@ -326,11 +325,20 @@ def main():
 
                     avg_nll_loss = total_nll_loss / (target.shape[1] - 1)
                     val_loss += avg_nll_loss.item()
-                    val_steps += 1
+                    val_steps += 1*B
 
                 avg_val_loss = val_loss / val_steps
                 writer.add_scalar('Validation Loss', avg_val_loss, epoch)
                 print(f"\n Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}")
+
+                # Save a model checkpoint and validation sample
+                epoch_model_save_dir = os.path.join(model_save_dir, f"epoch_{epoch+1}")
+                save_model(pose_model, epoch_model_save_dir, avg_val_loss, '', name='gen_3_sec_dnb_')
+                save_model(discriminator, epoch_model_save_dir, avg_val_loss, '', name='disc_3_sec_dnb_')
+                save_model(encodec_model, epoch_model_save_dir, avg_val_loss, '', name='encodec_3_sec_dnb_')
+                
+                save_valdiation_sample(input_for_next_step[-1], encodec_model, vid_path[-1], epoch, epoch_model_save_dir)
+                gc.collect()
         else:
             print(f"\n Epoch [{epoch+1}/{num_epochs}]")
         if torch.cuda.is_available():

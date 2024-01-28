@@ -14,8 +14,9 @@ from torch.utils.data import DataLoader, Dataset
 from datetime import datetime
 from torch.optim import Adam
 from transformers import EncodecModel
-from models import Pose2AudioTransformer, AudioDescriminator
+from models import Pose2AudioTransformer, AudioCodeDescriminator
 from utils import DanceToMusic
+from utils.training_utils import *
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import random_split
 
@@ -62,7 +63,7 @@ def main():
     embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
 
     target_shape = train_dataset.data['audio_codes'][0].shape
-    descriminator = AudioDescriminator(target_shape, hidden_units = 64, num_hidden_layers = 3, alpha = 0.01)
+    descriminator = AudioCodeDescriminator(target_shape, hidden_units = 64, num_hidden_layers = 3, alpha = 0.01)
     descriminator.to(device)
 
 
