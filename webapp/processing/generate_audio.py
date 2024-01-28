@@ -5,15 +5,24 @@ import sys
 
 current_directory = os.getcwd()
 models_dir = os.path.join(current_directory, '..')
+models_dir2 = os.path.join(current_directory, 'DanceToMusicApp/webapp/processing/')
 sys.path.append(models_dir)
 
 import torch
 from ml.models import Pose2AudioTransformer
 from transformers import EncodecModel
+from .utils import *
 
 from moviepy.editor import VideoFileClip, AudioFileClip, CompositeAudioClip
 import numpy as np
 from scipy.io import wavfile
+
+def audioCodeToWav(audio_code, encodec_model, sample_rate = 24000, device='cpu'):
+    audio_code = audio_code.reshape(1,1,2,int(audio_code.size(2)))
+    audio_code = audio_code.to(device)
+    audio_scale = [None]
+    wav = encodec_model.decode(audio_code, audio_scale)
+    return wav
 
 def generateAudio(vid_path, pose_path, max_pos_seq_len = 120):
     # assign GPU or CPU
@@ -24,28 +33,31 @@ def generateAudio(vid_path, pose_path, max_pos_seq_len = 120):
     else:
         device = torch.device("cpu")
     # device = torch.device("cpu")
+    
+    config = "processing/model/model_weights/wgan.txt"
+    pm_weights = 'processing/model/model_weights/gen_3_sec_dnb__loss_1.141.pt'
+    enc_weights = 'processing/model/model_weights/encodec_3_sec_dnb__loss_1.141.pt'
 
-    model_id = "facebook/encodec_24khz"
+    args = parse_args(config)
+
+    model_id = args.encodec_model_id
     encodec_model = EncodecModel.from_pretrained(model_id)
+    encodec_model.load_state_dict(torch.load(enc_weights, map_location=device))
     encodec_model.to(device)
+
     codebook_size = encodec_model.quantizer.codebook_size
-    sample_rate = 24000
-
-    src_pad_idx = 0
-    trg_pad_idx = 0
-    learned_weights = 'processing/model/model_weights/5_sec_dnb_best_model_weights_loss_4.911053791451962.pth'
-    # device = torch.device("mps")
+    sample_rate = args.sample_rate
+    src_pad_idx = args.src_pad_idx
+    trg_pad_idx = args.trg_pad_idx
     embed_size = 96
-    pose_model = Pose2AudioTransformer(codebook_size, src_pad_idx, trg_pad_idx, device=device, num_layers=4, heads = 4, embed_size=embed_size, dropout = 0.1)
-    pose_model.load_state_dict(torch.load(learned_weights, map_location=device))
+    pose_model = Pose2AudioTransformer(codebook_size, src_pad_idx, trg_pad_idx, 
+                                       device=device, 
+                                       num_layers=args.pose2audio_num_layers, 
+                                       heads = args.pose2audio_num_heads, 
+                                       embed_size=embed_size, 
+                                       dropout = args.dropout)
+    pose_model.load_state_dict(torch.load(pm_weights, map_location=device))
     pose_model.to(device)
-
-    def audioCodeToWav(audio_code, encodec_model, sample_rate = sample_rate, device='cpu'):
-        audio_code = audio_code.reshape(1,1,2,int(audio_code.size(2)/2))
-        audio_code = audio_code.to(device)
-        audio_scale = [None]
-        wav = encodec_model.decode(audio_code, audio_scale)
-        return wav
 
     # Specify the path to save the output video and the temporary audio
     generated_output_video = vid_path.replace('.mp4','_generated_audio.mp4')
@@ -71,7 +83,7 @@ def generateAudio(vid_path, pose_path, max_pos_seq_len = 120):
     pose_mask = pose_mask.unsqueeze(0).expand(1, max_pos_seq_len)  # Adds an extra dimension to make it 2D
     
     print("pose shape: ", pose.shape, "pose mask shape: ", pose_mask.shape, "max_pos_seq_len: ", max_pos_seq_len)
-    output = pose_model.generate(pose.unsqueeze(0).to(device), pose_mask.to(device), max_length = 752, temperature = 1)
+    output = pose_model.generate(pose.unsqueeze(0).to(device), pose_mask.to(device), max_length = 376, temperature = 1)
     wav = audioCodeToWav(output.unsqueeze(0), encodec_model, sample_rate = 24000, device=device)['audio_values']
 
     wav_np = wav[0].detach().cpu().numpy()
