@@ -92,7 +92,7 @@ def train():
         pose_model.load_state_dict(torch.load(weights, map_location=device))
 
     criterion_g = torch.nn.NLLLoss()
-    mel_spectrogram_transform = T.MelSpectrogram(sample_rate=24000, n_fft=2048, hop_length=256, n_mels=64).to(device)
+    mel_spectrogram_transform = T.MelSpectrogram(sample_rate=24000, n_fft=2048, n_mels=64).to(device)
 
     # Prepare encodec model for training, freeze all parameters except the final conv1d layer of the decoder    
     for param in encodec_model.parameters():
