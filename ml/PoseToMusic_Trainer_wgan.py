@@ -107,17 +107,18 @@ def main():
     criterion_g = torch.nn.NLLLoss()
     mel_spectrogram_transform = T.MelSpectrogram(sample_rate=24000, n_fft=2048, hop_length=256, n_mels=64).to(device)
 
-    # Prepare encodec model for training, freeze all parameters except the final conv1d layer of the decoder    
+    # Prepare encodec model for training, freeze all parameters 
     for param in encodec_model.parameters():
         param.requires_grad = False # freeze all parameters of the encoded model
-    for param in encodec_model.decoder.layers[-1].parameters(): 
-        param.requires_grad = True # unfreeze just the final conv1d layer of the encodec decoder 
+    optimizer_g = torch.optim.Adam(pose_model.parameters(), lr= args.g_learning_rate)
 
-    # criterion = MSELoss()
-    generator_params = list(pose_model.parameters()) + list(encodec_model.decoder.layers[-1].parameters())
-    optimizer_g = torch.optim.Adam(generator_params, lr=learning_rate)
-    # optimizer_g = torch.optim.Adam(pose_model.parameters(), lr=learning_rate)
-    optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=learning_rate)
+    if not args.freeze_encodec_decoder: # unfreeze the final conv1d layer of the so that weights can be updated 
+        for param in encodec_model.decoder.layers[-1].parameters(): 
+            param.requires_grad = True # unfreeze just the final conv1d layer of the encodec decoder 
+        generator_params = list(pose_model.parameters()) + list(encodec_model.decoder.layers[-1].parameters())
+        optimizer_g = torch.optim.Adam(generator_params, lr=args.g_learning_rate)       
+        
+    optimizer_d = torch.optim.Adam(discriminator.parameters(), lr= args.d_learning_rate)
 
 
     # Set up for tracking the best model

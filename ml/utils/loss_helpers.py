@@ -6,6 +6,15 @@ import librosa
 from transformers import EncodecModel
 
 def audioCodeToWav(audio_code, encodec_model, sample_rate = 24000):
+    """
+    Logs the gradients of a model's parameters.
+    Parameters:
+    - audio_code: The audio code. A latent representation built by the encodec.encoder and decoded into a .wav by the encodec.decoder.
+    - encodec_model: The model for encoding wav files into audio codes and decoding audio codes into wav files.
+    - sample_rate: The sample rate of the wav file.
+    Returns:
+    - combined_wav: The decoded audio code as a wav file.
+    """
     batch_size = audio_code.shape[0]
     audio_code = audio_code.reshape(batch_size,1,2,int(audio_code.shape[1]))
 
@@ -33,7 +42,6 @@ def audioCodeToWav(audio_code, encodec_model, sample_rate = 24000):
 def log_gradients(model, step, writer, tag_prefix='Gradients'):
     """
     Logs the gradients of a model's parameters.
-    
     Parameters:
     - model: The PyTorch model.
     - step: The current step or epoch number.
@@ -45,6 +53,21 @@ def log_gradients(model, step, writer, tag_prefix='Gradients'):
             writer.add_histogram(f'{tag_prefix}/{name}', parameter.grad, step)
 
 def compute_gradient_penalty(D, real_samples, fake_samples, device):
+    """
+    Computes the gradient penalty for WGAN-GP in order to inforce the Lipschitz constraint
+    and stabilizes the training of the discriminator.
+
+    Args:
+    - D: The discriminator model.
+    - real_samples: Tensor of real data samples.
+    - fake_samples: Tensor of generated (fake) data samples.
+    - device: The device (GPU/CPU) on which the tensors are.
+
+    Returns:
+    - gradient_penalty: The calculated gradient penalty, a scalar value that measures
+      how the gradients deviate from the desired norm value of 1.
+    """
+    
     # Random weight term for interpolation between real and fake samples
     alpha = torch.rand((real_samples.size(0), 1, 1), device=device)
     # Get random interpolation between real and fake samples
