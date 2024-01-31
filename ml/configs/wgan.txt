@@ -8,8 +8,8 @@ data_dir = /home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/3sec_2
 # Training parameters
 batch_size = 6
 num_epochs = 5000
-d_learning_rate = 1e-4
-g_learning_rate = 1e-4
+d_learning_rate = 1e-6
+g_learning_rate = 1e-5
 
 n_critic = 10
 nll_loss_weight = 1.0
@@ -21,6 +21,7 @@ val_epoch_interval = 5
 
 # Model and data parameters
 encodec_model_id = facebook/encodec_24khz
+freeze_encodec_decoder = True
 sample_rate = 24000
 starting_weights_path = None
 input_size = None

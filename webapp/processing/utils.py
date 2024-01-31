@@ -25,6 +25,7 @@ def parse_args(config):
     parser.add_argument("--weights_dir", default='5b')
     parser.add_argument("--model_save_dir", default='./logs')
     parser.add_argument("--data_dir", default='./logs')
+    parser.add_argument("--freeze_encodec_decoder", type=bool, default=True, help="Flag to use freeze the encodec decoder. Set to false if you want to train the decoder")
 
 
     parser.add_argument("--batch_size", type=int, default=8)

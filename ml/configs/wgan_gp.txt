@@ -21,6 +21,7 @@ accumulation_steps = 12
 
 # Model and data parameters
 encodec_model_id = facebook/encodec_24khz
+freeze_encodec_decoder = True
 sample_rate = 24000
 starting_weights_path = None
 input_size = None
