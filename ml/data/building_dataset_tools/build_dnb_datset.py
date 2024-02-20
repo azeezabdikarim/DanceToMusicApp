@@ -56,15 +56,15 @@ def main():
 
     # Step 1: Download and clip videos
     print("Step 1: Downloading and clipping videos...")
-    download_and_clip_videos(args.input_csv, args.output_path, args.max_seq_len)
+    # download_and_clip_videos(args.input_csv, args.output_path, args.max_seq_len)
 
     # Step 2: Standardize outputs ex. 24 fps 24000 sr
     print("Step 2: Standardizing outputs...")
-    standardize_samples(args.output_path, args.fps, args.audio_sr)
+    # standardize_samples(args.output_path, args.fps, args.audio_sr)
 
     # Step 3: Extract poses
     print("Step 3: Extracting poses...")
-    extract_poses(args.output_path, args.fps)
+    # extract_poses(args.output_path, args.fps)
 
     # Step 4: Extract Instrumental to build Drum and Bass dataset
     print("Step 4: Extracting instrumental...")
