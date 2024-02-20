@@ -92,7 +92,13 @@ def saveVideoKeypoints(video_path, pose_model, save_dir, frame_rate = 24, mp_pos
 
 
     # Convert list to a NumPy array of shape [num_frames, num_keypoints, 3]
-    final_landmarks_array = np.stack(landmarks_list, axis=0)
+    if landmarks_list:
+        final_landmarks_array = np.stack(landmarks_list, axis=0)
+    else:
+        # Create an empty array with a predefined shape
+        # Adjust the shape according to your needs
+        final_landmarks_array = np.empty((0, 33, 3))  # Example shape
+
     pose_save_path = os.path.join(save_dir, f"{video_path.split('/')[-3]}_{video_name}_3D_landmarks.npy")
     np.save(pose_save_path, final_landmarks_array)
 

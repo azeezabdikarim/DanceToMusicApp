@@ -20,6 +20,7 @@ ml/utils/__pycache__/
 ml/data/building_tools/__pycache__/
 ml/data/spleeter/*
 ml/data/spleeter
+ml/data/building_dataset_tools/spleeter/*
 Procfile
 Dockerfile
 instructions/*

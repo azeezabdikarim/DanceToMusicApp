@@ -7,19 +7,22 @@ from moviepy.editor import VideoFileClip, AudioFileClip
 import numpy as np
 import argparse
 import librosa
+import tensorflow as tf
+import gc
+
 
 # python /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/building_dataset_tools/seperate_vocals.py --directory /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/5sec_expando_test
 def extract_instrumental(data_dir, sr = 24000, mp_pose=None):
     directory = data_dir
 
     # Initialize Spleeter
-    separator = Separator('spleeter:4stems')
+    # separator = Separator('spleeter:4stems', multiprocess=False)
 
     for root, dirs, files in os.walk(directory):
         for d in dirs:
             if 'spleeter' not in os.path.join(root, d):
                 wav_path = os.path.join(root, d, f"{d[:-7]}.wav")
-                extractDrumNBass(wav_path, separator, sr=sr)
+                extractDrumNBass(wav_path, sr=sr)
 
 def replace_audio_in_renders(directory):
     for root, dirs, files in os.walk(directory):
@@ -68,22 +71,35 @@ def extractInstrumental2Stems(wav_path, separator, sr = 24000):
 
     return vocals_path, instrumental_path
 
-def extractDrumNBass(wav_path, separator, sr = 24000):
+def extractDrumNBass(wav_path, sr = 24000):
+    # Initialize Spleeter
+    separator = Separator('spleeter:4stems', multiprocess=False)
+
     # Determine output directory based on wav_path
     output_dir = os.path.dirname(wav_path)
-    spleeter_output_dir = os.path.join(output_dir, "spleeter_output")
+    dir_cont = wav_path.split('/')[-2][:-7]
+    spleeter_output_dir = os.path.join(output_dir, "spleeter_output", dir_cont)
+
+    waveform, _ = librosa.load(wav_path, sr=sr, mono=True)
+    separated = separator.separate(np.expand_dims(waveform, axis=1), audio_descriptor=wav_path)
+    separator.join()
+
+    os.makedirs(spleeter_output_dir, exist_ok=True)
+    # Manually save each separated stem
+    for stem, data in separated.items():
+        stem_path = os.path.join(spleeter_output_dir, f"{stem}.wav")
+        sf.write(stem_path, data, 24000)
     
     # Use Spleeter to separate the audio file
-    separator.separate_to_file(wav_path, spleeter_output_dir)
+    # separator.separate_to_file(wav_path, spleeter_output_dir, synchronous = True)
+    # separator.join()
 
     # Build string to help locate the output audio files 
-    dir_cont = wav_path.split('/')[-2][:-7]
     # Construct paths for the separated audio
-    output_dir = f'{spleeter_output_dir}/{dir_cont}'
-    vocals_path = f'{output_dir}/vocals.wav'
-    drums_path = f'{output_dir}/drums.wav'
-    bass_path = f'{output_dir}/bass.wav'
-    other_path = f'{output_dir}/other.wav'
+    vocals_path = f'{spleeter_output_dir}/vocals.wav'
+    drums_path = f'{spleeter_output_dir}/drums.wav'
+    bass_path = f'{spleeter_output_dir}/bass.wav'
+    other_path = f'{spleeter_output_dir}/other.wav'
 
     # Load the separated audio back into Python
     drums, _ = librosa.load(drums_path, sr=sr, mono=True)
@@ -97,6 +113,9 @@ def extractDrumNBass(wav_path, separator, sr = 24000):
 
     combined_path = os.path.join(*wav_path.split('/')[:-1], f"{dir_cont}_drum_and_bass.wav")
     sf.write('/'+combined_path, drum_and_bass, sr)
+    print(f"Saved dnb track to {combined_path}")
+    del separator
+    gc.collect()       
 
 def main():
     # Argument parser
