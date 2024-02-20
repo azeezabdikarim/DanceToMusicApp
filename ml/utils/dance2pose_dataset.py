@@ -48,30 +48,32 @@ class DanceToMusic(Dataset):
             for d in dirs:
                 if 'error' not in d and 'spleeter' not in os.path.join(root,d):
                     pose_path = os.path.join(root, d, f"{root.split('/')[-1]}_{d[:-7]}_3D_landmarks.npy")
-                    if dnb:
-                        wav_path = os.path.join(root, d, f"{d[:-7]}_drum_and_bass.wav")
-                    else:
-                        wav_path = os.path.join(root, d, f"{d[:-7]}.wav")
-                    
-                    vid_path = os.path.join(root, d, f"{d[:-7]}.mp4")
-                    if not os.path.exists(vid_path):
-                        vid_path = ''
-                    video_paths.append(vid_path)
+                    pose_arr = np.load(pose_path) 
+                    if len(pose_arr) > 0:
+                        if dnb:
+                            wav_path = os.path.join(root, d, f"{d[:-7]}_drum_and_bass.wav")
+                        else:
+                            wav_path = os.path.join(root, d, f"{d[:-7]}.wav")
+                        
+                        vid_path = os.path.join(root, d, f"{d[:-7]}.mp4")
+                        if not os.path.exists(vid_path):
+                            vid_path = ''
+                        video_paths.append(vid_path)
 
-                    audio_code_path = wav_path.replace('.wav', '_audio_code.npy')
-                    if os.path.exists(audio_code_path):
-                        audio_code = np.load(audio_code_path)
-                        audio_codes.append(audio_code)
+                        audio_code_path = wav_path.replace('.wav', '_audio_code.npy')
+                        if os.path.exists(audio_code_path):
+                            audio_code = np.load(audio_code_path)
+                            audio_codes.append(audio_code)
 
-                    # poses.append(self._buildPoses(pose_dir_path))
-                    poses.append(np.load(pose_path))
-                    wav, sr = librosa.load(wav_path, sr=sr)
-                    sample_rate.append(sr)
-                    wav_paths.append(wav_path)
-                    wavs.append(wav)
-                    count_loaded_sample += 1
-                    if count_loaded_sample == num_samples:
-                        break
+                        # poses.append(self._buildPoses(pose_dir_path))
+                        poses.append(pose_arr)
+                        wav, sr = librosa.load(wav_path, sr=sr)
+                        sample_rate.append(sr)
+                        wav_paths.append(wav_path)
+                        wavs.append(wav)
+                        count_loaded_sample += 1
+                        if count_loaded_sample == num_samples:
+                            break
 
         ret = {
             "poses": poses,
