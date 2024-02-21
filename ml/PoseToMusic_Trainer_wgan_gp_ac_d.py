@@ -238,16 +238,16 @@ def train_one_epoch(pose_model, discriminator, encodec_model, train_loader, crit
         if (i + 1) % N_CRITIC == 0:
             # Calculate perceptual loss. derive it by comparing the generated vs target mel spectrgorams 
             optimizer_g.zero_grad()
-            generated_wav = audioCodeToWav(input_for_next_step, encodec_model, sample_rate = 24000)
-            # generated_spec = mel_spectrogram_transform(generated_wav)
-            # target_spec = mel_spectrogram_transform(wav.squeeze(1))
-            # min_length = min(generated_spec.shape[-1], target_spec.shape[-1])
-            # mel_mse_loss = ((generated_spec[:,:,:,:min_length] - target_spec[:,:,:,:min_length])**2).mean()
-            # mel_mse_loss = mel_mse_loss
-            wav = wav.squeeze(1)
-            min_length = min(generated_wav.shape[-1], wav.shape[-1])
-            mel_mse_loss = ((generated_wav[:,:,:min_length] - wav[:,:,:min_length])**2).mean()
-            mel_mse_loss = 50 * mel_mse_loss
+            # generated_wav = audioCodeToWav(input_for_next_step, encodec_model, sample_rate = 24000)
+                            # generated_spec = mel_spectrogram_transform(generated_wav)
+                            # target_spec = mel_spectrogram_transform(wav.squeeze(1))
+                            # min_length = min(generated_spec.shape[-1], target_spec.shape[-1])
+                            # mel_mse_loss = ((generated_spec[:,:,:,:min_length] - target_spec[:,:,:,:min_length])**2).mean()
+                            # mel_mse_loss = mel_mse_loss
+            # wav = wav.squeeze(1)
+            # min_length = min(generated_wav.shape[-1], wav.shape[-1])
+            # temporal_mse_loss = ((generated_wav[:,:,:min_length] - wav[:,:,:min_length])**2).mean()
+            # temporal_mse_loss = 50 * temporal_mse_loss
 
             avg_nll_loss = epoch_total_nll_loss / (total_timesteps)
             batch_nll_loss = batch_nll_loss / (batch_time_steps)
@@ -256,7 +256,7 @@ def train_one_epoch(pose_model, discriminator, encodec_model, train_loader, crit
             fake_output = discriminator(fake_data)
             adversarial_loss_g = -torch.mean(fake_output)
 
-            combined_loss_g = (2*batch_nll_loss) + adversarial_loss_g + mel_mse_loss
+            combined_loss_g = (2*batch_nll_loss) + adversarial_loss_g #+ temporal_mse_loss
             combined_loss_g.backward()
 
             total_norm_g, layer_norms_g = calculate_gradient_norm_layers(pose_model)
@@ -275,7 +275,7 @@ def train_one_epoch(pose_model, discriminator, encodec_model, train_loader, crit
 
             tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/1_Combined_Loss', combined_loss_g.item(), epoch * len(train_loader) + i)
             tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/2_Batch_NLL_Loss', 2*batch_nll_loss.item(), epoch * len(train_loader) + i)
-            tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/3_Time_MSE_Loss_Scaled', mel_mse_loss.item(), epoch * len(train_loader) + i)
+            # tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/3_Time_MSE_Loss_Scaled', temporal_mse_loss.item(), epoch * len(train_loader) + i)
             tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/4_Adversarial_Loss', adversarial_loss_g.item(), epoch * len(train_loader) + i)
             tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/5_Average_Epcoch_Loss', avg_epoch_loss_g, epoch * len(train_loader) + i)
 
