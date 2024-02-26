@@ -4,6 +4,23 @@ import numpy as np
 from torch import nn
 
 
+class PoseRNN(nn.Module):
+    def __init__(self, input_size=32*3, hidden_size=128, num_layers=3, output_size=256):
+        super(PoseRNN, self).__init__()
+        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        # Reshape input to be (B, N, input_size)
+        x = x.view(x.size(0), x.size(1), -1)
+        
+        # LSTM forward pass
+        x, (h_n, c_n) = self.lstm(x)
+        
+        # Take the last hidden state for embedding
+        embedding = self.fc(h_n[-1])
+        return embedding
+    
 class Attention2D(nn.Module):
     def __init__(self, c, nhead, dropout=0.0):
         super().__init__()
@@ -13,13 +30,20 @@ class Attention2D(nn.Module):
         orig_shape = x.shape
         x = x.view(x.size(0), x.size(1), -1).permute(0, 2, 1)
         if self_attn:
+            kv = kv.unsqueeze(1).expand(-1, x.size(1), -1)
             kv = torch.cat([x, kv], dim=1)
         x = self.attn(x, kv, kv, need_weights=False)[0]
         x = x.permute(0, 2, 1).view(*orig_shape)
         return x
 
-
 class LayerNorm2d(nn.LayerNorm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, x):
+        return super().forward(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+    
+class LayerNorm1d(nn.LayerNorm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -38,13 +62,15 @@ class GlobalResponseNorm(nn.Module):
         Gx = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
         Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (x * Nx) + self.beta + x
-
-
+    
 class ResBlock(nn.Module):
     def __init__(self, c, c_skip=None, kernel_size=3, dropout=0.0):
         super().__init__()
-        self.depthwise = nn.Conv2d(c + c_skip, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
-        self.norm = LayerNorm2d(c, elementwise_affine=False, eps=1e-6)
+        # self.depthwise = nn.Conv1d(c + c_skip if c_skip is not None else c, c, 
+        #                            kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
+        self.depthwise = nn.Conv2d(c + c_skip if c_skip is not None else c, c, 
+                                   kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
+        self.norm = LayerNorm1d(c, elementwise_affine=False, eps=1e-6)
         self.channelwise = nn.Sequential(
             nn.Linear(c, c * 4),
             nn.GELU(),
@@ -56,17 +82,22 @@ class ResBlock(nn.Module):
     def forward(self, x, x_skip=None):
         x_res = x
         if x_skip is not None:
+            # Crop x to the size of x_skip if they don't match
+            if x.shape[2] > x_skip.shape[2]:
+                x = x[..., :x_skip.shape[2], :x_skip.shape[3]]
+            elif x.shape[2] < x_skip.shape[2]:
+                x_skip = x_skip[..., :x.shape[2], :x.shape[3]]
             x = torch.cat([x, x_skip], dim=1)
         x = self.norm(self.depthwise(x)).permute(0, 2, 3, 1)
         x = self.channelwise(x).permute(0, 3, 1, 2)
         return x + x_res
 
-
+    
 class AttnBlock(nn.Module):
     def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0):
         super().__init__()
         self.self_attn = self_attn
-        self.norm = LayerNorm2d(c, elementwise_affine=False, eps=1e-6)
+        self.norm = LayerNorm1d(c, elementwise_affine=False, eps=1e-6)
         self.attention = Attention2D(c, nhead, dropout)
         self.kv_mapper = nn.Sequential(
             nn.SiLU(),
@@ -77,12 +108,11 @@ class AttnBlock(nn.Module):
         kv = self.kv_mapper(kv)
         x = x + self.attention(self.norm(x), kv, self_attn=self.self_attn)
         return x
-
-
+    
 class FeedForwardBlock(nn.Module):
     def __init__(self, c, dropout=0.0):
         super().__init__()
-        self.norm = LayerNorm2d(c, elementwise_affine=False, eps=1e-6)
+        self.norm = LayerNorm1d(c, elementwise_affine=False, eps=1e-6)
         self.channelwise = nn.Sequential(
             nn.Linear(c, c * 4),
             nn.GELU(),
@@ -118,7 +148,8 @@ class Dance2MusicDiffusion(nn.Module):
             dropout = [dropout] * len(c_hidden)
 
         # CONDITIONING
-        self.dance_conv1d = nn.Conv1d(in_channels=num_keypoints, out_channels=dance_embd, kernel_size=5, padding=2)
+        # self.dance_conv1d = nn.Conv1d(in_channels=num_keypoints, out_channels=dance_embd, kernel_size=5, padding=2)
+        self.dance_embdeder = PoseRNN(hidden_size=256, num_layers=3, output_size=c_cond)
         self.dance_mapper = nn.Linear(dance_embd, c_cond)
         self.seq_norm = nn.LayerNorm(c_cond, elementwise_affine=False, eps=1e-6)
 
@@ -127,8 +158,7 @@ class Dance2MusicDiffusion(nn.Module):
             nn.LayerNorm(c_in, elementwise_affine=False, eps=1e-6)
         )
         self.embedding = nn.Sequential(
-            nn.PixelUnshuffle(patch_size),
-            nn.Conv2d(c_in * (patch_size ** 2), c_hidden[0], kernel_size=1),
+            nn.Conv2d(c_in , c_hidden[0], kernel_size=1),
             LayerNorm2d(c_hidden[0], elementwise_affine=False, eps=1e-6)
         )
 
@@ -151,7 +181,7 @@ class Dance2MusicDiffusion(nn.Module):
             if i > 0:
                 down_block.append(nn.Sequential(
                     LayerNorm2d(c_hidden[i - 1], elementwise_affine=False, eps=1e-6),
-                    nn.Conv2d(c_hidden[i - 1], c_hidden[i], kernel_size=2, stride=2),
+                    nn.Conv2d(c_hidden[i - 1], c_hidden[i], kernel_size=(2,1), stride=(2,1)),
                 ))
             for _ in range(blocks[i]):
                 for block_type in level_config[i]:
@@ -170,15 +200,14 @@ class Dance2MusicDiffusion(nn.Module):
             if i > 0:
                 up_block.append(nn.Sequential(
                     LayerNorm2d(c_hidden[i], elementwise_affine=False, eps=1e-6),
-                    nn.ConvTranspose2d(c_hidden[i], c_hidden[i - 1], kernel_size=2, stride=2),
+                    nn.ConvTranspose2d(c_hidden[i], c_hidden[i - 1], kernel_size=(2,1), stride=(2,1)),
                 ))
             self.up_blocks.append(up_block)
 
         # OUTPUT
         self.clf = nn.Sequential(
             LayerNorm2d(c_hidden[0], elementwise_affine=False, eps=1e-6),
-            nn.Conv2d(c_hidden[0], c_out * (patch_size ** 2), kernel_size=1),
-            nn.PixelShuffle(patch_size),
+            nn.Conv2d(c_hidden[0], c_out, kernel_size=1),
         )
         self.out_mapper = nn.Sequential(
             LayerNorm2d(c_out, elementwise_affine=False, eps=1e-6),
@@ -190,7 +219,7 @@ class Dance2MusicDiffusion(nn.Module):
         nn.init.normal_(self.dance_mapper.weight, std=0.02)
         # nn.init.normal_(self.clip_mapper.weight, std=0.02)
         # nn.init.normal_(self.clip_image_mapper.weight, std=0.02)
-        torch.nn.init.xavier_uniform_(self.embedding[1].weight, 0.02)
+        torch.nn.init.xavier_uniform_(self.embedding[0].weight, 0.02)
         nn.init.constant_(self.clf[1].weight, 0)
         nn.init.normal_(self.in_mapper[0].weight, std=np.sqrt(1 / num_labels))
         self.out_mapper[-1].weight.data = self.in_mapper[0].weight.data[:, :, None, None].clone()
@@ -264,8 +293,8 @@ class Dance2MusicDiffusion(nn.Module):
             x = torch.cat([x, x_cat], dim=1)
         # Process the conditioning embeddings
         t_embed = self.gen_t_embedding(t)
-        dance_embed = dance_embed.transpose(1, 2)
-        d_embed = self.dance_conv1d(dance_embed)
+        # dance_embed = dance_embed.transpose(1, 2)
+        d_embed = self.dance_embdeder(dance_embed)
         # d_embed = self.dance_mapper(dance_embed)
 
         # Model Blocks

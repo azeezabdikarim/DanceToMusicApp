@@ -1,0 +1,51 @@
+# Directory configuration
+weights_dir = /home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights
+# weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
+# model_save_dir = /path/to/model_saves
+# data_dir = /home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/3sec_24fps_expando_dnb
+data_dir = /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/samples/3sec_24fps_dnb
+
+# Training parameters
+batch_size = 8
+num_epochs = 5000
+d_learning_rate = 1e-6
+g_learning_rate = 1e-5
+
+n_critic = 10
+nll_loss_weight = 1.0
+bce_loss_weight = 1.0
+teacher_forcing_ratio = 0.5
+val_epoch_interval = 5
+
+
+
+# Model and data parameters
+encodec_model_id = facebook/encodec_24khz
+freeze_encodec_decoder = True
+sample_rate = 24000
+starting_weights_path = None
+input_size = None
+embed_size = 32
+train_ratio = 0.8
+val_ratio = 0.2
+random_seed = 40
+src_pad_idx = 0
+trg_pad_idx = 0
+num_layers = 1
+heads = 2
+dropout = 0.1
+
+# Pose2AudioTransformer parameters
+pose2audio_num_layers = 2
+pose2audio_num_heads = 2
+pose2audio_dropout = 0.1
+
+# Discriminator parameters
+clip_value = 0.01
+discriminator_hidden_units = 32
+discriminator_num_hidden_layers = 2
+discriminator_alpha = 0.01
+
+# Device configuration
+# use_cuda = True
+# use_mps = False
