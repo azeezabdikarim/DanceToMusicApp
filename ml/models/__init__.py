@@ -2,3 +2,4 @@ from .pose2audioTransformer import Pose2AudioTransformer
 from .pose2audioLongformer import Pose2AudioLongformer
 from .audio_discriminator import AudioCodeDiscriminator
 from .audio_discriminator import MelSpectrogramDiscriminator
+from .diffusion_modules_1d import Dance2MusicDiffusion
