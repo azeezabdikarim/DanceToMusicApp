@@ -9,8 +9,9 @@ from torch.utils.data import DataLoader, Dataset
 
 
 class DanceToMusic(Dataset):
-    def __init__(self, directory, encoder = None, sample_rate=24000, device = torch.device("cpu"), num_samples = None, dnb=False):
+    def __init__(self, directory, encoder = None, sample_rate=24000, device = torch.device("cpu"), num_samples = None, dnb=False, clean_poses = False):
         self.device = device
+        self.clean_poses = clean_poses
         self.raw_data = self._load_data(directory, sample_rate, num_samples, dnb)
         self.data = self._buildData(self.raw_data)
         if 'audio_codes' not in self.data.keys():
@@ -102,14 +103,7 @@ class DanceToMusic(Dataset):
         data['audio_codes'] = audio_codes
         return data
 
-    def _buildData(self, raw_data):
-        data = {}
-        data['wav_paths'] = raw_data['wav_paths']
-        data['sample_rate'] =  raw_data['sample_rate']
-        data['video_paths'] = raw_data['video_paths']
-        if 'audio_codes' in raw_data.keys():
-            data['audio_codes'] = raw_data['audio_codes']
-        
+    def _buildData(self, raw_data, movement_threshold=0.1, keypoints_threshold=4, frame_threshold = 0.2):
         # Handle poses
         poses = [torch.tensor(p) for p in raw_data['poses']]
         max_pos_seq_len = max(p.shape[0] for p in poses)
@@ -139,11 +133,35 @@ class DanceToMusic(Dataset):
             n = audio.size(0)
             padded_audio[i, :n] = audio
             audio_padding_mask[i, :n] = 1  # Set mask to 1 for non-padded values
-        
-        data['poses'] = padded_poses.to(self.device)
-        data['pose_padding_mask'] = pose_padding_mask.to(self.device)
-        data['wavs'] = padded_audio.unsqueeze(1).to(self.device)
-        data['audio_padding_mask'] = audio_padding_mask.to(self.device)
+
+        if self.clean_poses:
+            select_indexes = []
+            for i, p in enumerate(padded_poses):
+                frame_pose_errors = self._keypoint_stability_check(p, movement_threshold, keypoints_threshold)
+                if len(frame_pose_errors)/len(p) < frame_threshold:
+                    select_indexes.append(i)
+            data = {
+                'wav_paths': [raw_data['wav_paths'][i] for i in select_indexes],
+                'sample_rate': raw_data['sample_rate'],  # Assuming this is the same for all samples
+                'video_paths': [raw_data['video_paths'][i] for i in select_indexes],
+                'audio_codes': [raw_data['audio_codes'][i] for i in select_indexes] if 'audio_codes' in raw_data else None,
+                'poses': padded_poses[select_indexes].to(self.device),
+                'pose_padding_mask': pose_padding_mask[select_indexes].to(self.device),
+                'wavs': padded_audio[select_indexes].unsqueeze(1).to(self.device),
+                'audio_padding_mask': audio_padding_mask[select_indexes].to(self.device)
+            }
+        else:
+            data = {
+                'wav_paths': raw_data['wav_paths'],
+                'sample_rate': raw_data['sample_rate'],  # Assuming this is the same for all samples
+                'video_paths': raw_data['video_paths'],
+                'poses': padded_poses.to(self.device),
+                'pose_padding_mask': pose_padding_mask.to(self.device),
+                'wavs': padded_audio.unsqueeze(1).to(self.device),
+                'audio_padding_mask': audio_padding_mask.to(self.device)
+            }
+            if 'audio_codes' in raw_data.keys():
+                data['audio_codes'] = raw_data['audio_codes']
         
         return data
 
@@ -156,5 +174,30 @@ class DanceToMusic(Dataset):
                     pose = np.load(os.path.join(root, f))
                     poses.append(pose)
         return np.array(poses)
-
     
+    def _calculate_keypoint_movement(self, kp1, kp2):
+        return np.linalg.norm(kp1 - kp2, axis=1)
+
+    def _keypoint_stability_check(self, data, movement_threshold, keypoints_threshold):
+        # data is a numpy array of shape [n, 32, 3]
+        error_frames = []
+        for i in range(1, len(data)):
+            # Calculate movement for each keypoint from frame i-1 to i
+            movement = self._calculate_keypoint_movement(data[i-1, :, :2], data[i, :, :2])
+            
+            # Identify occluded keypoints (assuming they are marked as NaN)
+            occluded = np.isnan(data[i-1, :, :2]) | np.isnan(data[i, :, :2])
+            
+            # Ignore occluded keypoints
+            movement[occluded] = 0
+            
+            # Count keypoints with movement greater than the threshold
+            keypoints_exceeding_threshold = np.sum(movement > movement_threshold)
+            
+            # Check if the count exceeds the threshold
+            if keypoints_exceeding_threshold >= keypoints_threshold:
+                error_frames.append(i)
+
+        return np.array(error_frames)
+
+        
