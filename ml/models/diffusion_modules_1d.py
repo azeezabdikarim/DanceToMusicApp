@@ -149,7 +149,7 @@ class Dance2MusicDiffusion(nn.Module):
 
         # CONDITIONING
         # self.dance_conv1d = nn.Conv1d(in_channels=num_keypoints, out_channels=dance_embd, kernel_size=5, padding=2)
-        self.dance_embdeder = PoseRNN(hidden_size=256, num_layers=3, output_size=c_cond)
+        self.dance_embdeder = PoseRNN(hidden_size=128, num_layers=1, output_size=c_cond)
         self.dance_mapper = nn.Linear(dance_embd, c_cond)
         self.seq_norm = nn.LayerNorm(c_cond, elementwise_affine=False, eps=1e-6)
 
@@ -303,7 +303,10 @@ class Dance2MusicDiffusion(nn.Module):
         level_outputs = self._down_encode(x, t_embed, d_embed)
         x = self._up_decode(level_outputs, t_embed, d_embed)
         x = self.out_mapper(self.clf(x))
-        return x
+
+        probabilities = nn.functional.softmax(x, dim=-1)  # Convert logits to probabilities
+        log_probabilities = torch.log(probabilities)
+        return x, log_probabilities
 
     def add_noise(self, x, t, mask=None, random_x=None):
         if mask is None:

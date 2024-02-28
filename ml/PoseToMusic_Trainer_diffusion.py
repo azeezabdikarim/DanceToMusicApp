@@ -43,43 +43,30 @@ def initialize_model_and_data(args, device):
     model_id = args.encodec_model_id
     encodec_model = EncodecModel.from_pretrained(model_id)
     codebook_size = encodec_model.quantizer.codebook_size
-    encodec_model.to(device)
+    encodec_model.to('cpu')
     sample_rate = args.sample_rate
 
     data_dir = args.data_dir
     train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
 
-    # input_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
-    # embed_size = 32
-    input_size = None
-    embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]    
     target_shape = train_dataset.data['audio_codes'][0].shape
     pose_seq_len = train_dataset.data['poses'].shape[1]
-    # pose_model = Pose2AudioTransformer(codebook_size, 
-    #                                    args.src_pad_idx, 
-    #                                    args.trg_pad_idx, 
-    #                                    device = device, 
-    #                                    num_layers = args.pose2audio_num_layers, 
-    #                                    heads = args.pose2audio_num_heads, 
-    #                                    embed_size = embed_size, 
-    #                                    dropout = args.pose2audio_dropout, 
-    #                                    input_size = input_size)
-    # pose_model.to(device)
-
     latent_len = target_shape[0]*target_shape[1]
-    ld_model = Dance2MusicDiffusion(c_in = 16, c_out = 16, pose_seq_len = pose_seq_len, num_labels = codebook_size)
+
+    ld_model = Dance2MusicDiffusion(c_in = 64, c_out = 64, pose_seq_len = pose_seq_len, num_labels = codebook_size, blocks=[3, 6, 3], c_cond=256)
     ld_model.to(device)
 
     # return encodec_model, pose_model, ld_model, train_dataset
     return encodec_model, ld_model, train_dataset
 
 
-def validation_step(ld_model, val_loader, criterion, device, tensorboard_writer, epoch, num_epochs):
+def validation_step(ld_model, val_loader, encodec_model, criterion, device, tensorboard_writer, epoch, num_epochs):
     """
     Executes validation steps for one epoch.
     """
     val_loss = 0
     ld_model.eval()  # Set the model to evaluation mode
+    encodec_model.eval()
 
     with torch.no_grad():  # Disable gradient computation
         for i, (audio_codes, pose, pose_mask, wav, wav_mask, wav_path, vid_path, _) in enumerate(val_loader):
@@ -90,45 +77,66 @@ def validation_step(ld_model, val_loader, criterion, device, tensorboard_writer,
             t = (1 - torch.rand(pose.size(0), device=device))
             noisey_latent, mask = ld_model.add_noise(audio_codes, t)
             noisey_latent = noisey_latent.to(device)
-            denoised_latent = ld_model(noisey_latent, t, context)
-            t_len = min(denoised_latent.shape[2], audio_codes.shape[1])
-            loss = criterion(denoised_latent[:,:,:t_len,:], audio_codes[:,:t_len,:].long())
+            denoised_latent, log_probabilities = ld_model(noisey_latent, t, context)
+            t_len = min(log_probabilities.shape[2], audio_codes.shape[1])
+            nll_loss = criterion(log_probabilities[:,:,:t_len,:], audio_codes[:,:t_len,:].long())
 
-            val_loss += loss.item()
+            generated_audio_codes = torch.argmax(log_probabilities, dim = 1)
+            generated_wavs = audioCodeToWav(generated_audio_codes.to('cpu'), encodec_model.to('cpu'), sample_rate = 24000)
+            generated_wavs = generated_wavs.to(device)
+            min_length = min(generated_wavs.shape[-1], wav.shape[-1])
+            temp_mse_loss = ((generated_wavs[:,:,:min_length] - wav[:,:,:min_length])**2).mean()
+            temp_mse_loss = temp_mse_loss
+
+            val_loss += nll_loss.item() + temp_mse_loss.item()
 
         avg_val_loss = val_loss / len(val_loader)
-        tensorboard_writer.add_scalar('Validation Loss', avg_val_loss, epoch)
+        tensorboard_writer.add_scalar('Validation/Total_Loss', avg_val_loss, epoch)
+        tensorboard_writer.add_scalar('Validation/NLL_Loss', nll_loss.item(), epoch)
+        tensorboard_writer.add_scalar('Validation/Temporal_MSE_Loss', temp_mse_loss.item(), epoch)
         print(f"\n Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}")
 
-    return avg_val_loss, torch.argmax(denoised_latent, dim = 1), vid_path
+    return avg_val_loss, torch.argmax(log_probabilities, dim = 1), vid_path
     
-def train_one_epoch(ld_model, train_loader, criterion, optimizer, device, tensorboard_writer, epoch, max_steps, args):
+def train_one_epoch(ld_model, train_loader, encodec_model, criterion, optimizer, device, tensorboard_writer, epoch, args):
+    ld_model.train()
+    encodec_model.eval()
+    
     total_loss = 0
     num_epochs = args.num_epochs
     progress_bar = tqdm(enumerate(train_loader), total=len(train_loader))
     for i, (audio_codes, pose, pose_mask, wav, wav_mask, wav_path, vid_path, _) in progress_bar:
         optimizer.zero_grad()
 
-        # src = pose.to(device)
-        # enc_mask = pose_model.make_src_mask(src)
-
         B, N, _, _ = pose.shape
-        # enc_context = pose_model.encoder(src.view(B, N, -1), enc_mask)
         context = pose.view(B, N, -1).to(device)
         audio_codes = audio_codes.to(device)
 
         t = (1 - torch.rand(pose.size(0), device = device))
         noisey_latent, mask = ld_model.add_noise(audio_codes, t)
         noisey_latent = noisey_latent.to(device)
-        denoised_latent = ld_model(noisey_latent, t, context)
-        t_len = min(denoised_latent.shape[2], audio_codes.shape[1])
-        loss = criterion(denoised_latent[:,:,:t_len,:], audio_codes[:,:t_len,:].long())
-        total_loss += loss.detach().item()
+        denoised_latent, log_probabilities = ld_model(noisey_latent, t, context)
+        t_len = min(log_probabilities.shape[2], audio_codes.shape[1])
+        nll_loss = criterion(log_probabilities[:,:,:t_len,:].contiguous(), audio_codes[:,:t_len,:].long().contiguous())
+
+        generated_audio_codes = torch.argmax(log_probabilities, dim = 1)
+        generated_wavs = audioCodeToWav(generated_audio_codes.to('cpu'), encodec_model.to('cpu'), sample_rate = 24000)
+        generated_wavs = generated_wavs.to(device)
+        min_length = min(generated_wavs.shape[-1], wav.shape[-1])
+        temp_mse_loss = ((generated_wavs[:,:,:min_length] - wav[:,:,:min_length])**2).mean()
+
+        temp_mse_loss = 10*temp_mse_loss
+
+        total_loss += nll_loss.detach().item() + temp_mse_loss.detach().item()
+
+        loss = nll_loss + temp_mse_loss
         loss.backward()
         optimizer.step()
 
-        tensorboard_writer.add_scalar('Categorical Loss', loss.item(), epoch * len(train_loader) + i)
-        progress_bar.set_description(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {loss:.4f}")
+        tensorboard_writer.add_scalar('Training/Total_Loss', loss.item(), epoch * len(train_loader) + i)
+        tensorboard_writer.add_scalar('Training/NLL_Loss', nll_loss.item(), epoch * len(train_loader) + i)
+        tensorboard_writer.add_scalar('Training/Temporal_MSE_Loss', temp_mse_loss.item(), epoch * len(train_loader) + i)
+        progress_bar.set_description(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {nll_loss:.4f} Temporal MSE Loss: {temp_mse_loss:.4f}")
     
     avg_epoch_loss = total_loss / len(train_loader)
     return ld_model, {'avg_epoch_loss': avg_epoch_loss}
@@ -188,7 +196,6 @@ def train():
         device = torch.device("cuda:0")
     else:
         device = torch.device("cpu")
-    device = torch.device("mps")
 
     encodec_model, ld_model, train_dataset = initialize_model_and_data(args, device)
     train_loader, val_loader = build_data_loaders(train_dataset, args)
@@ -216,11 +223,10 @@ def train():
 
     val_epoch_interval = args.val_epoch_interval # 5
     num_epochs = args.num_epochs
-    max_steps = 100
     for epoch in range(num_epochs):
         # pose_model.train()
 
-        ld_model, loss = train_one_epoch(ld_model, train_loader, criterion, optimizer, device, writer, epoch, max_steps, args)
+        ld_model, loss = train_one_epoch(ld_model, train_loader, encodec_model, criterion, optimizer, device, writer, epoch, args)
         avg_epoch_loss = loss['avg_epoch_loss']
         
         # Compute average epoch loss
@@ -230,13 +236,13 @@ def train():
         if epoch % val_epoch_interval == 0:
             ld_model.eval()
             encodec_model.eval()
-            avg_val_loss, generated_audio_codes, vid_paths = validation_step(ld_model, val_loader, criterion, device, writer, epoch, num_epochs)
+            avg_val_loss, generated_audio_codes, vid_paths = validation_step(ld_model, val_loader, encodec_model, criterion, device, writer, epoch, num_epochs)
 
             # Save a model checkpoint and validation sample
             epoch_model_save_dir = os.path.join(model_save_dir, f"epoch_{epoch+1}")
             save_model(ld_model, epoch_model_save_dir, avg_val_loss, '', name='ld_3_sec_dnb_')
             save_model(encodec_model, epoch_model_save_dir, avg_val_loss, '', name='encodec_3_sec_dnb_')
-            save_valdiation_sample(generated_audio_codes[-1], encodec_model, vid_paths[-1], epoch, epoch_model_save_dir)
+            save_valdiation_sample(generated_audio_codes[-1].to('cpu'), encodec_model, vid_paths[-1], epoch, epoch_model_save_dir)
             gc.collect()
         else:
             print(f"\n Epoch [{epoch+1}/{num_epochs}]")
