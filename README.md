@@ -98,7 +98,10 @@ The core objective of this project is to produce a sequence-to-sequence model ca
 In the context of our training dataset of 5 sec clips filmed at 24fps with an audio sample rate of 24khz, our goals is to map a vector sequence of 120x33x3 to a latent audio code sequence of 1x754. Due to the layered approach of quantization in a RVQ codebook, our sequence-to-sequence model most reconstruct the audio codes autoregressively. 
 
 ### Transition to WGAN Framework
-Initially, the model employed a standard sequence-to-sequence transformer, focusing primarily on generating audio codes using NLLLoss (Negative Log Likelihood Loss). The recent integration of the Wasserstein Generative Adversarial Network (WGAN) framework marks a significant evolution in the model's architecture. This update enhances the model's ability to produce more realistic geneerate audio. The details of this architecutral change are desrcribed below in the 'Training' section of this document. 
+Initially, the model employed a standard sequence-to-sequence transformer, focusing primarily on generating audio codes using NLLLoss (Negative Log Likelihood Loss). The recent integration of the Wasserstein Generative Adversarial Network (WGAN) framework marks an evolution in the model's architecture. This update enhances the model's ability to produce more realistic geneerate audio. The details of this architecutral change are desrcribed below in the 'Training' section of this document. 
+
+### Comparison to Latent Diffusion
+On the 'latent_diffsuion' branch of this project I am exploring the using of conditonal latent diffusion to generate novel latent audio codes. This architecture is still under testing, howver it has allowed me to run more experiments since I don't run into the quadratic memory constraints imposed by autoregressive transformers. This model is trained using cross entropy loss to score the generated vs target latent vectors, as well as with a preceptual, derived from the MSE between beat onset detection evalauted on the generated and target .wav files. 
 
 ## Training
 
@@ -168,13 +171,12 @@ Sample results can be viewed below by clicking on the thumbnails. In the models 
 
 ## Next Steps
 I have a few theories for why the model struggles to produce suitable music to match the subjects movements. To improve the generative abilities I am looking into:
-- experimenting the values used to weight the generator's loss
-- training the models longer (currently the max training run was 6 epochs ~8 hours on a NVIDIA GeForce RTX 3080)
-- exapnd/clean the training dataset
+- tuning the weights of the different loss terms
+- expand the dataset
+- experiment with the AIST++ datasaet
 
 #### Improve the Training Data
-- Currently there are roughly 1,300 5sec training samples. I am working to increase the size of the training set to 10,000+ samples. 
-- The human pose estimation isn't perfect. In some samples, there are momentary glitches in the keypoint detection, which may be having more impact than is trully understood. Manualy cleaning fo this dataset would be tedious, so I am looking into strategies of automatically identifying samples where the pose estimation performs poorly. 
+- Currently there are roughly 1,300 3sec training samples. I want to increase the size of the training set to 10,000+ samples. 
 
 ## Credits
 
