@@ -18,7 +18,7 @@ ml/data/test/
 ml/my_logs/
 ml/utils/__pycache__/
 ml/data/building_tools/__pycache__/
-ml/data/spleeter/*
+ml/data/building_dataset_tools/spleeter/*
 ml/data/spleeter
 ml/data/building_dataset_tools/spleeter/*
 Procfile
@@ -34,6 +34,12 @@ channeldata.json
 index.html
 my_logs/
 ml/cuda_memory_track
+ml/data/.DS_Store
+ml/data/building_dataset_tools/CustomDanceToMusic/spleeter
+
+ml/data/aist/*
+ml/data/tik_tok_dataset/*
+ml/data/aioz/*
 
 requirements_mac.txt
 ml/model_weights/
