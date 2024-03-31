@@ -30,6 +30,7 @@ requirements_docker.txt
 .DS_Store
 ml/data/building_dataset_tools/AIOZ_Processing/models/smpl/*
 ml/data/building_dataset_tools/AIOZ_Processing/smpl/*
+ml/data/building_dataset_tools/AIOZ_Processing/models/smpl/*
 noarch/
 .vscode/
 channeldata.json
@@ -38,6 +39,8 @@ my_logs/
 ml/cuda_memory_track
 ml/data/.DS_Store
 ml/data/building_dataset_tools/CustomDanceToMusic/spleeter
+ml/data/building_dataset_tools/AIOZ_Processing/models/smpl/
+ml/data/building_dataset_tools/AIOZ_Processing/models/smpl/
 
 ml/data/aist/*
 ml/data/tik_tok_dataset/*
