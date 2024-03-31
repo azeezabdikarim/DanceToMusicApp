@@ -28,6 +28,8 @@ older_docker.txt
 requirements_docker.txt
 */.DS_Store
 .DS_Store
+ml/data/building_dataset_tools/AIOZ_Processing/models/smpl/*
+ml/data/building_dataset_tools/AIOZ_Processing/smpl/*
 noarch/
 .vscode/
 channeldata.json
