@@ -288,13 +288,13 @@ class Dance2MusicDiffusion(nn.Module):
                     x = block(x)
         return x
 
-    def forward(self, x, t, dance_embed, clip=None, clip_image=None, x_cat=None):
+    def forward(self, x, t, pose_sequence, clip=None, clip_image=None, x_cat=None):
         if x_cat is not None:
             x = torch.cat([x, x_cat], dim=1)
         # Process the conditioning embeddings
         t_embed = self.gen_t_embedding(t)
         # dance_embed = dance_embed.transpose(1, 2)
-        d_embed = self.dance_embdeder(dance_embed)
+        d_embed = self.dance_embdeder(pose_sequence)
         # d_embed = self.dance_mapper(dance_embed)
 
         # Model Blocks

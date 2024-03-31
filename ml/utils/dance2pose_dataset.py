@@ -9,11 +9,11 @@ from torch.utils.data import DataLoader, Dataset
 
 
 class DanceToMusic(Dataset):
-    def __init__(self, directory, encoder = None, sample_rate=24000, device = torch.device("cpu"), num_samples = None, dnb=False, clean_poses = False):
+    def __init__(self, directory, encoder = None, sample_rate=24000, device = torch.device("cpu"), num_samples = None, dnb=False, clean_poses = False, movement_threshold=0.1, keypoints_threshold=4, frame_error_rate = 0.2):
         self.device = device
         self.clean_poses = clean_poses
         self.raw_data = self._load_data(directory, sample_rate, num_samples, dnb)
-        self.data = self._buildData(self.raw_data)
+        self.data = self._buildData(self.raw_data, movement_threshold, keypoints_threshold, frame_error_rate)
         if 'audio_codes' not in self.data.keys():
             self.encoder = encoder
             if encoder is not None:
@@ -103,7 +103,7 @@ class DanceToMusic(Dataset):
         data['audio_codes'] = audio_codes
         return data
 
-    def _buildData(self, raw_data, movement_threshold=0.1, keypoints_threshold=4, frame_threshold = 0.2):
+    def _buildData(self, raw_data, movement_threshold=0.1, keypoints_threshold=4, frame_error_rate = 0.2):
         # Handle poses
         poses = [torch.tensor(p) for p in raw_data['poses']]
         max_pos_seq_len = max(p.shape[0] for p in poses)
@@ -138,7 +138,7 @@ class DanceToMusic(Dataset):
             select_indexes = []
             for i, p in enumerate(padded_poses):
                 frame_pose_errors = self._keypoint_stability_check(p, movement_threshold, keypoints_threshold)
-                if len(frame_pose_errors)/len(p) < frame_threshold:
+                if len(frame_pose_errors)/len(p) < frame_error_rate:
                     select_indexes.append(i)
             data = {
                 'wav_paths': [raw_data['wav_paths'][i] for i in select_indexes],

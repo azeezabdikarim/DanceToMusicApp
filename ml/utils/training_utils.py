@@ -33,11 +33,17 @@ def parse_args():
     parser.add_argument("--data_dir", default='./logs')
     parser.add_argument("--freeze_encodec_decoder", type=bool, default=True, help="Flag to use freeze the encodec decoder. Set to false if you want to train the decoder")
 
+    # Dataset Clean Poses Parameters
+    parser.add_argument("--clean_poses", type=bool, default=False, help="Flag to use clean poses.")
+    parser.add_argument("--movement_threshold", type=float, default=0.09, help="Threshold for keypoint movement.")
+    parser.add_argument("--keypoints_threshold", type=int, default=3, help="Threshold for number of keypoints.")
+    parser.add_argument("--frame_error_rate", type=float, default=0.08, help="Frame error rate.")
 
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_epochs", type=int, default=100)
     parser.add_argument("--g_learning_rate", type=float, default=1e-5)
     parser.add_argument("--d_learning_rate", type=float, default=1e-5)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
 
     parser.add_argument("--nll_loss_weight", type=float, default=1e-5)
     parser.add_argument("--bce_loss_weight", type=float, default=1e-5)

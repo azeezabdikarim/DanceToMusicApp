@@ -18,6 +18,7 @@ from datetime import datetime
 from torch.optim import Adam
 from transformers import EncodecModel
 from models import Pose2AudioTransformer, AudioCodeDiscriminator, MelSpectrogramDiscriminator, Dance2MusicDiffusion
+from utils.beat_onset_detection.bod_model import convNet
 from utils import DanceToMusic
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import random_split
@@ -47,7 +48,8 @@ def initialize_model_and_data(args, device):
     sample_rate = args.sample_rate
 
     data_dir = args.data_dir
-    train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
+    train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, clean_poses= True, 
+                                movement_threshold= args.movement_threshold, keypoints_threshold = args.keypoints_threshold, frame_error_rate = args.frame_error_rate)
 
     target_shape = train_dataset.data['audio_codes'][0].shape
     pose_seq_len = train_dataset.data['poses'].shape[1]
@@ -59,8 +61,19 @@ def initialize_model_and_data(args, device):
     # return encodec_model, pose_model, ld_model, train_dataset
     return encodec_model, ld_model, train_dataset
 
+def initialize_beat_model(args, device):
+    bod_model = convNet()
+    bod_model = bod_model.to(device)
 
-def validation_step(ld_model, val_loader, encodec_model, criterion, device, tensorboard_writer, epoch, num_epochs):
+    if torch.cuda.is_available():
+        bod_model.load_state_dict(torch.load('/home/azeez/Documents/projects/DanceToMusicApp/ml/utils/beat_onset_detection/don_model.pth'))
+    else:
+        bod_model.load_state_dict(torch.load('/home/azeez/Documents/projects/DanceToMusicApp/ml/utils/beat_onset_detection/don_model.pth', map_location='cpu'))
+
+    return bod_model
+
+
+def validation_step(ld_model, val_loader, encodec_model, criterion, device, tensorboard_writer, epoch, num_epochs, bod_model = None):
     """
     Executes validation steps for one epoch.
     """
@@ -80,34 +93,39 @@ def validation_step(ld_model, val_loader, encodec_model, criterion, device, tens
             denoised_latent, log_probabilities = ld_model(noisey_latent, t, context)
             t_len = min(log_probabilities.shape[2], audio_codes.shape[1])
             nll_loss = criterion(log_probabilities[:,:,:t_len,:], audio_codes[:,:t_len,:].long())
+            
+            val_loss += nll_loss.detach().item()
 
-            generated_audio_codes = torch.argmax(log_probabilities, dim = 1)
-            generated_wavs = audioCodeToWav(generated_audio_codes.to('cpu'), encodec_model.to('cpu'), sample_rate = 24000)
-            generated_wavs = generated_wavs.to(device)
-            min_length = min(generated_wavs.shape[-1], wav.shape[-1])
-            temp_mse_loss = ((generated_wavs[:,:,:min_length] - wav[:,:,:min_length])**2).mean()
-            temp_mse_loss = temp_mse_loss
 
-            val_loss += nll_loss.item() + temp_mse_loss.item()
+            if bod_model is not None:
+                generated_audio_codes = torch.argmax(log_probabilities, dim = 1)
+                generated_wavs = audioCodeToWav(generated_audio_codes.to('cpu'), encodec_model.to('cpu'), sample_rate = 24000)
+                # generated_wavs = generated_wavs.to(device)
+                min_length = min(generated_wavs.shape[-1], wav.shape[-1])
+                # Compute beat scores
+                beat_score = batch_compute_beat_scores(bod_model, wav[:,:,:min_length], generated_wavs[:,:,:min_length], device = 'cpu')
+                beat_score = 1 * (1 - beat_score)
+                val_loss += beat_score.detach().item()
+                tensorboard_writer.add_scalar('Validation/Beat_Score', beat_score.item(), epoch * len(val_loader) + i)
+
 
         avg_val_loss = val_loss / len(val_loader)
         tensorboard_writer.add_scalar('Validation/Total_Loss', avg_val_loss, epoch)
         tensorboard_writer.add_scalar('Validation/NLL_Loss', nll_loss.item(), epoch)
-        tensorboard_writer.add_scalar('Validation/Temporal_MSE_Loss', temp_mse_loss.item(), epoch)
+
         print(f"\n Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}")
 
     return avg_val_loss, torch.argmax(log_probabilities, dim = 1), vid_path
     
-def train_one_epoch(ld_model, train_loader, encodec_model, criterion, optimizer, device, tensorboard_writer, epoch, args):
+def train_one_epoch(ld_model, train_loader, encodec_model, criterion, optimizer, device, tensorboard_writer, epoch, args, bod_model = None):
     ld_model.train()
     encodec_model.eval()
     
+    accumulation_steps = args.gradient_accumulation_steps
     total_loss = 0
     num_epochs = args.num_epochs
     progress_bar = tqdm(enumerate(train_loader), total=len(train_loader))
     for i, (audio_codes, pose, pose_mask, wav, wav_mask, wav_path, vid_path, _) in progress_bar:
-        optimizer.zero_grad()
-
         B, N, _, _ = pose.shape
         context = pose.view(B, N, -1).to(device)
         audio_codes = audio_codes.to(device)
@@ -119,25 +137,38 @@ def train_one_epoch(ld_model, train_loader, encodec_model, criterion, optimizer,
         t_len = min(log_probabilities.shape[2], audio_codes.shape[1])
         nll_loss = criterion(log_probabilities[:,:,:t_len,:].contiguous(), audio_codes[:,:t_len,:].long().contiguous())
 
-        generated_audio_codes = torch.argmax(log_probabilities, dim = 1)
-        generated_wavs = audioCodeToWav(generated_audio_codes.to('cpu'), encodec_model.to('cpu'), sample_rate = 24000)
-        generated_wavs = generated_wavs.to(device)
-        min_length = min(generated_wavs.shape[-1], wav.shape[-1])
-        temp_mse_loss = ((generated_wavs[:,:,:min_length] - wav[:,:,:min_length])**2).mean()
+        total_loss += 5*nll_loss.detach().item() 
+        loss = 5*nll_loss
 
-        temp_mse_loss = 10*temp_mse_loss
+        if bod_model is not None:
+            generated_audio_codes = torch.argmax(log_probabilities, dim = 1)
+            generated_wavs = audioCodeToWav(generated_audio_codes.to('cpu'), encodec_model.to('cpu'), sample_rate = 24000)
+            # generated_wavs = generated_wavs.to(device)
+            min_length = min(generated_wavs.shape[-1], wav.shape[-1])
+            # Compute beat scores
+            beat_score = batch_compute_beat_scores(bod_model, wav[:,:,:min_length], generated_wavs[:,:,:min_length], device = 'cpu')
+            beat_score = 1 * (1 - beat_score)
+            total_loss += beat_score.detach().item()
+            loss += beat_score
 
-        total_loss += nll_loss.detach().item() + temp_mse_loss.detach().item()
+            tensorboard_writer.add_scalar('Training/Beat_Score', beat_score.item(), epoch * len(train_loader) + i)
 
-        loss = nll_loss + temp_mse_loss
+
+        
+        loss = loss / accumulation_steps
         loss.backward()
-        optimizer.step()
+
+        if (i + 1) % accumulation_steps == 0 or i == len(train_loader) - 1:
+            optimizer.step()
+            optimizer.zero_grad()
+
 
         tensorboard_writer.add_scalar('Training/Total_Loss', loss.item(), epoch * len(train_loader) + i)
-        tensorboard_writer.add_scalar('Training/NLL_Loss', nll_loss.item(), epoch * len(train_loader) + i)
-        tensorboard_writer.add_scalar('Training/Temporal_MSE_Loss', temp_mse_loss.item(), epoch * len(train_loader) + i)
-        progress_bar.set_description(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {nll_loss:.4f} Temporal MSE Loss: {temp_mse_loss:.4f}")
-    
+        tensorboard_writer.add_scalar('Training/NLL_Loss', 5*nll_loss.item(), epoch * len(train_loader) + i)
+        # tensorboard_writer.add_scalar('Training/Temporal_MSE_Loss', temp_mse_loss.item(), epoch * len(train_loader) + i)
+        # progress_bar.set_description(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {nll_loss:.4f} Temporal MSE Loss: {temp_mse_loss:.4f}")
+        progress_bar.set_description(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {nll_loss:.4f}")
+
     avg_epoch_loss = total_loss / len(train_loader)
     return ld_model, {'avg_epoch_loss': avg_epoch_loss}
 
@@ -198,6 +229,7 @@ def train():
         device = torch.device("cpu")
 
     encodec_model, ld_model, train_dataset = initialize_model_and_data(args, device)
+    bod_model = initialize_beat_model(args, device = 'cpu')
     train_loader, val_loader = build_data_loaders(train_dataset, args)
     
     
@@ -224,19 +256,16 @@ def train():
     val_epoch_interval = args.val_epoch_interval # 5
     num_epochs = args.num_epochs
     for epoch in range(num_epochs):
-        # pose_model.train()
-
-        ld_model, loss = train_one_epoch(ld_model, train_loader, encodec_model, criterion, optimizer, device, writer, epoch, args)
+        ld_model, loss = train_one_epoch(ld_model, train_loader, encodec_model, criterion, optimizer, device, writer, epoch, args, bod_model = bod_model)
         avg_epoch_loss = loss['avg_epoch_loss']
         
-        # Compute average epoch loss
         writer.add_scalar('Average Epoch Loss', avg_epoch_loss, epoch)
         print(f"\nEnd of Epoch [{epoch+1}/{num_epochs}], Average Generator Loss: {avg_epoch_loss:.4f}")        
         
         if epoch % val_epoch_interval == 0:
             ld_model.eval()
             encodec_model.eval()
-            avg_val_loss, generated_audio_codes, vid_paths = validation_step(ld_model, val_loader, encodec_model, criterion, device, writer, epoch, num_epochs)
+            avg_val_loss, generated_audio_codes, vid_paths = validation_step(ld_model, val_loader, encodec_model, criterion, device, writer, epoch, num_epochs, bod_model = bod_model)
 
             # Save a model checkpoint and validation sample
             epoch_model_save_dir = os.path.join(model_save_dir, f"epoch_{epoch+1}")

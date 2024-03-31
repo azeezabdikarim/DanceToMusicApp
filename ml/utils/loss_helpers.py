@@ -3,7 +3,9 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 import librosa
+import multiprocessing
 from transformers import EncodecModel
+from .beat_onset_detection.bod_music_processor import *
 
 def audioCodeToWav(audio_code, encodec_model, sample_rate = 24000):
     """
@@ -105,3 +107,96 @@ def calculate_gradient_norm_layers(model):
             total_norm += param_norm.item() ** 2
     total_norm = total_norm ** 0.5
     return total_norm, layer_norms
+
+
+# Beat Scores Ref: https://github.com/L-YeZhu/Beats_Scores/blob/main/beats_scores.py
+# def beat_detect(x, sr=24000):
+# 	onsets = librosa.onset.onset_detect(x, sr=sr, wait=1, delta=0.2, pre_avg=1, post_avg=1, post_max=1, units='time')
+# 	n = np.ceil( len(x) / sr)
+# 	beats = [0] * int(n)
+# 	for time in onsets:
+# 		beats[int(np.trunc(time))] = 1
+# 	return beats
+
+# def beat_detect(batch_x, sr=24000):
+#     all_beats = []
+#     for x in batch_x:
+#         if len(x.shape) > 1:
+#             x = x.squeeze()  # Ensure x is one-dimensional
+#         onsets = librosa.onset.onset_detect(y=x, sr=sr, wait=1, delta=0.2, pre_avg=1, post_avg=1, post_max=1, units='time')
+#         n = np.ceil(len(x) / sr)
+#         beats = [0] * int(n)
+#         for time in onsets:
+#             beats[int(np.trunc(time))] = 1
+#         all_beats.append(beats)
+#     return all_beats
+
+# def compute_beat_scores(ref_wav, syn_wav):
+#     gt_beats = beat_detect(ref_wav)
+#     syn_beats = beat_detect(syn_wav)
+#     score_cover, score_hit = beat_scores(gt_beats, syn_beats)
+#     return score_cover, score_hit
+
+def compute_beat_scores(model, gt_wav, gen_wav, device = 'cpu'):
+    gt_stacked_specs = torch_fft_and_melscale(gt_wav.squeeze(0))
+    gen_stacked_specs = torch_fft_and_melscale(gen_wav.squeeze(0))
+
+    inference_gt = model.torch_infer(gt_stacked_specs, device, minibatch=4192)
+    inference_gen = model.torch_infer(gen_stacked_specs, device, minibatch=4192)
+
+    # Compute the MSE loss between the inferred beats and the ground truth beats
+    criterion = nn.MSELoss()
+    loss = criterion(inference_gen, inference_gt)
+
+    return loss
+
+def batch_compute_beat_scores(model, gt_wavs, gen_wavs, device = 'cpu'):
+    losses = []
+    model.to(device)
+    gt_wavs = gt_wavs.to(device)
+    gen_wavs = gen_wavs.to(device)
+    for gt_wav, gen_wav in zip(gt_wavs, gen_wavs):
+        loss = compute_beat_scores(model, gt_wav, gen_wav, device)
+        losses.append(loss)
+    return torch.mean(torch.stack(losses))
+
+
+# def beat_scores(gt, syn):
+# 	assert len(gt) == len(syn)
+# 	total_beats = sum(gt)
+# 	cover_beats = sum(syn)
+# 	hit_beats = 0
+# 	for i in range(len(gt)):
+# 		if gt[i] == 1 and gt[i] == syn[i]:
+# 			hit_beats += 1
+# 	return cover_beats/total_beats, hit_beats/total_beats
+
+# def _beat_detect_single(x, sr=24000):
+#     """ Function to detect beats for a single audio sample. """
+#     onsets = librosa.onset.onset_detect(y=x, sr=sr, wait=1, delta=0.2, pre_avg=1, post_avg=1, post_max=1, units='time')
+#     n = np.ceil(len(x) / sr)
+#     beats = [0] * int(n)
+#     for time in onsets:
+#         beats[int(np.trunc(time))] = 1
+#     return beats
+
+# def beat_detect(batch_x, sr=24000, num_processes=None):
+#     """ Function to detect beats for a batch of audio samples. """
+#     # Flatten the batch if it's multidimensional
+#     batch_x = [x.squeeze() for x in batch_x]
+#     # Create a pool of worker processes
+#     with multiprocessing.Pool(processes=num_processes) as pool:
+#         all_beats = pool.starmap(_beat_detect_single, [(x, sr) for x in batch_x])
+#     return all_beats
+
+# def compute_beat_scores(ref_wav, gen_wav):
+#     gt_beats = beat_detect(ref_wav)
+#     gen_beats = beat_detect(gen_wav)
+#     scores = [beat_scores(gt, syn) for gt, syn in zip(gt_beats, gen_beats)]
+
+#     batch_size = len(scores)  # Assuming scores is not empty
+
+#     avg_cover_score = sum([score[0] for score in scores]) / batch_size
+#     avg_hit_score = sum([score[1] for score in scores]) / batch_size
+#     return avg_cover_score, avg_hit_score
+
