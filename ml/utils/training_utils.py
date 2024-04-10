@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument("--model_save_dir", default='./logs')
     parser.add_argument("--data_dir", default='./logs')
     parser.add_argument("--freeze_encodec_decoder", type=bool, default=True, help="Flag to use freeze the encodec decoder. Set to false if you want to train the decoder")
-
+    parser.add_argument("--dataset", type=str, default="aioz", help="Which dataset is being using for training. Options are 'aioz' or 'dance2music'")
 
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_epochs", type=int, default=100)

@@ -18,7 +18,7 @@ from datetime import datetime
 from torch.optim import Adam
 from transformers import EncodecModel
 from models import Pose2AudioTransformer, AudioCodeDiscriminator, MelSpectrogramDiscriminator
-from utils import DanceToMusic
+from utils import DanceToMusic, DanceToMusic_SMPL
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import random_split
 from utils.loss_helpers import *
@@ -47,7 +47,10 @@ def initialize_model_and_data(args, device):
     sample_rate = args.sample_rate
 
     data_dir = args.data_dir
-    train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
+    if args.dataset == 'aioz':
+        train_dataset = DanceToMusic_SMPL(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = False, num_samples = 60)
+    elif args.dataset == 'dance2music':
+        train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
 
     # input_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
     # embed_size = 32
@@ -78,7 +81,7 @@ def initialize_model_and_data(args, device):
 
     return encodec_model, pose_model, discriminator, train_dataset
 
-def validation_step(pose_model, val_loader, criterion, device, tensorboard_writer, epoch, num_epochs, model_save_dir):
+def validation_step(pose_model, val_loader, criterion, device, tensorboard_writer, epoch, num_epochs, model_save_dir, args):
     """
     Executes validation steps for one epoch.
     Args:
@@ -100,6 +103,9 @@ def validation_step(pose_model, val_loader, criterion, device, tensorboard_write
     val_steps = 0
     with torch.no_grad():
         for audio_codes, pose, pose_mask, wav, wav_mask, wav_path, vid_path, _ in val_loader:
+            if args.dataset == 'aioz':
+                pose = pose[:,0,:,:,:]
+
             target = audio_codes.to(device)
             input_for_next_step = target[:, 0:1, :]
             
@@ -170,6 +176,8 @@ def train_one_epoch(pose_model, discriminator, encodec_model, train_loader, crit
         wav = wav.unsqueeze(1)
         target = audio_codes.to(device)        
         input_for_next_step = target[:, 0:1, :]
+        if args.dataset == 'aioz':
+                pose = pose[:,0,:,:,:]
         
         src = pose.to(device)
         enc_mask = pose_model.make_src_mask(src)
