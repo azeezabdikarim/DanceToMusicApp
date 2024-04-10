@@ -40,7 +40,8 @@ ml/cuda_memory_track
 ml/data/.DS_Store
 ml/data/building_dataset_tools/CustomDanceToMusic/spleeter
 ml/data/building_dataset_tools/AIOZ_Processing/models/smpl/
-ml/data/building_dataset_tools/AIOZ_Processing/models/smpl/
+ml/data/building_dataset_tools/AIOZ_Processing/smpl/
+/home/azeez/Documents/projects/DanceToMusicApp/ml/data/aioz
 
 ml/data/aist/*
 ml/data/tik_tok_dataset/*

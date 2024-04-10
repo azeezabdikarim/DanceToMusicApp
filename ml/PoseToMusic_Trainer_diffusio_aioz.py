@@ -43,12 +43,12 @@ def initialize_model_and_data(args, device):
     model_id = args.encodec_model_id
     encodec_model = EncodecModel.from_pretrained(model_id)
     codebook_size = encodec_model.quantizer.codebook_size
-    encodec_model.to('cpu')
+    encodec_model.to(device)
     sample_rate = args.sample_rate
 
     data_dir = args.data_dir
     # train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
-    train_dataset = DanceToMusic_SMPL(data_dir, encoder = encodec_model, sample_rate = 44100, device=device, dnb = False, num_samples = 24)
+    train_dataset = DanceToMusic_SMPL(data_dir, encoder = encodec_model, sample_rate = 22050, device=device, dnb = False)
 
     target_shape = train_dataset.data['audio_codes'][0].shape
     pose_seq_len = train_dataset.data['joints'].shape[2]
@@ -58,9 +58,11 @@ def initialize_model_and_data(args, device):
     pose_seq_len = train_dataset.data['joints'].shape[2]
     latent_len = target_shape[0]*target_shape[1]
 
-    ld_model = Dance2MusicDiffusion(c_in = 64, c_out = 64, pose_seq_len = pose_seq_len, 
-                                    num_labels = codebook_size, blocks=[3, 6, 3], c_cond=256, num_keypoints=keypoints_flat)
+    ld_model = Dance2MusicDiffusion(c_in=args.c_in, c_out=args.c_out, pose_seq_len=pose_seq_len,
+                                    num_labels=codebook_size, blocks=[2,4,2], c_cond=args.c_cond,
+                                    num_keypoints=keypoints_flat)
     ld_model.to(device)
+    encodec_model.to('cpu')
 
     # return encodec_model, pose_model, ld_model, train_dataset
     return encodec_model, ld_model, train_dataset
@@ -104,6 +106,7 @@ def validation_step(ld_model, val_loader, encodec_model, criterion, device, tens
         print(f"\n Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}")
 
     return avg_val_loss, torch.argmax(log_probabilities, dim = 1), vid_path
+
     
 def train_one_epoch(ld_model, train_loader, encodec_model, criterion, optimizer, device, tensorboard_writer, epoch, args):
     ld_model.train()
@@ -111,6 +114,7 @@ def train_one_epoch(ld_model, train_loader, encodec_model, criterion, optimizer,
     
     total_loss = 0
     num_epochs = args.num_epochs
+    accum_steps = args.gradient_accumulation_steps
     progress_bar = tqdm(enumerate(train_loader), total=len(train_loader))
     for i, (audio_codes, pose, pose_mask, wav, wav_mask, wav_path, vid_path, _) in progress_bar:
         optimizer.zero_grad()
@@ -132,17 +136,21 @@ def train_one_epoch(ld_model, train_loader, encodec_model, criterion, optimizer,
         min_length = min(generated_wavs.shape[-1], wav.shape[-1])
         temp_mse_loss = ((generated_wavs[:,:,:min_length] - wav[:,:,:min_length])**2).mean()
 
-        temp_mse_loss = 10*temp_mse_loss
+        temp_mse_loss = temp_mse_loss
 
         total_loss += nll_loss.detach().item() + temp_mse_loss.detach().item()
 
         loss = nll_loss + temp_mse_loss
+        loss = loss / accum_steps  # Normalize the loss by accum_steps
         loss.backward()
-        optimizer.step()
 
-        tensorboard_writer.add_scalar('Training/Total_Loss', loss.item(), epoch * len(train_loader) + i)
-        tensorboard_writer.add_scalar('Training/NLL_Loss', nll_loss.item(), epoch * len(train_loader) + i)
-        tensorboard_writer.add_scalar('Training/Temporal_MSE_Loss', temp_mse_loss.item(), epoch * len(train_loader) + i)
+        if (i + 1) % accum_steps == 0 or (i + 1) == len(train_loader):
+            optimizer.step()
+            optimizer.zero_grad()
+
+        tensorboard_writer.add_scalar('Training/Total_Loss', loss.item() * accum_steps, epoch * len(train_loader) + i)
+        tensorboard_writer.add_scalar('Training/NLL_Loss', nll_loss.item() * accum_steps, epoch * len(train_loader) + i)
+        tensorboard_writer.add_scalar('Training/Temporal_MSE_Loss', temp_mse_loss.item() * accum_steps, epoch * len(train_loader) + i)
         progress_bar.set_description(f"Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {nll_loss:.4f} Temporal MSE Loss: {temp_mse_loss:.4f}")
     
     avg_epoch_loss = total_loss / len(train_loader)

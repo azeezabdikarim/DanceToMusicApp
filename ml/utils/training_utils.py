@@ -39,6 +39,13 @@ def parse_args():
     parser.add_argument("--keypoints_threshold", type=int, default=3, help="Threshold for number of keypoints.")
     parser.add_argument("--frame_error_rate", type=float, default=0.08, help="Frame error rate.")
 
+     # Dance2MusicDiffusion parameters
+    parser.add_argument("--c_in", type=int, default=64, help="Number of input channels for the Dance2MusicDiffusion model.")
+    parser.add_argument("--c_out", type=int, default=64, help="Number of output channels for the Dance2MusicDiffusion model.")
+    parser.add_argument("--blocks", type=lambda x: [int(y.strip()) for y in x.strip('[]').split(',') if y.strip().isdigit()], default=[2, 4, 2], help="List of block sizes for the Dance2MusicDiffusion model.")
+    parser.add_argument("--c_cond", type=int, default=256, help="Conditioning size for the Dance2MusicDiffusion model.")
+
+
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_epochs", type=int, default=100)
     parser.add_argument("--g_learning_rate", type=float, default=1e-5)
