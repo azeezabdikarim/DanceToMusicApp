@@ -45,6 +45,7 @@ def parse_args():
     parser.add_argument("--blocks", type=lambda x: [int(y.strip()) for y in x.strip('[]').split(',') if y.strip().isdigit()], default=[2, 4, 2], help="List of block sizes for the Dance2MusicDiffusion model.")
     parser.add_argument("--c_cond", type=int, default=256, help="Conditioning size for the Dance2MusicDiffusion model.")
 
+    parser.add_argument("--dataset", type=str, default="aioz", help="Which dataset is being using for training. Options are 'aioz' or 'dance2music'")
 
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_epochs", type=int, default=100)

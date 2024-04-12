@@ -8,6 +8,7 @@ data_dir = /home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/3sec_2
 batch_size = 7
 num_epochs = 100
 learning_rate = 1e-6
+dataset = dance2music
 
 
 nll_loss_weight = 1.0

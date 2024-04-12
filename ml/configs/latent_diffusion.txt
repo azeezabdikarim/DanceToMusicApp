@@ -16,6 +16,7 @@ batch_size = 2
 num_epochs = 5000
 d_learning_rate = 1e-6
 g_learning_rate = 1e-5
+dataset = dance2music
 
 n_critic = 10
 nll_loss_weight = 1.0

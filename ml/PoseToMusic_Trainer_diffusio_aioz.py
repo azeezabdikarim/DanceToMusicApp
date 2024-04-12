@@ -47,20 +47,35 @@ def initialize_model_and_data(args, device):
     sample_rate = args.sample_rate
 
     data_dir = args.data_dir
+<<<<<<< HEAD
     # train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
     train_dataset = DanceToMusic_SMPL(data_dir, encoder = encodec_model, sample_rate = 22050, device=device, dnb = False)
 
+=======
+    if args.dataset == 'aioz':
+        train_dataset = DanceToMusic_SMPL(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = False, num_samples = 60)
+    elif args.dataset == 'dance2music':
+        train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
+    
+>>>>>>> origin/aioz_dataset
     target_shape = train_dataset.data['audio_codes'][0].shape
-    pose_seq_len = train_dataset.data['joints'].shape[2]
-    keypoints_flat = train_dataset.data['joints'].shape[3]*train_dataset.data['joints'].shape[4]
+    if args.dataset == 'aioz':
+        pose_seq_len = train_dataset.data['joints'].shape[2]
+        keypoints_flat = train_dataset.data['joints'].shape[3]*train_dataset.data['joints'].shape[4]
+    elif args.dataset == 'dance2music':
+        pose_seq_len = train_dataset.data['poses'].shape[1]
+        keypoints_flat = train_dataset.data['poses'].shape[2]*train_dataset.data['poses'].shape[3]
 
-    # change to if statment and edit config file to switch between datasets
-    pose_seq_len = train_dataset.data['joints'].shape[2]
     latent_len = target_shape[0]*target_shape[1]
+<<<<<<< HEAD
 
     ld_model = Dance2MusicDiffusion(c_in=args.c_in, c_out=args.c_out, pose_seq_len=pose_seq_len,
                                     num_labels=codebook_size, blocks=[2,4,2], c_cond=args.c_cond,
                                     num_keypoints=keypoints_flat)
+=======
+    ld_model = Dance2MusicDiffusion(c_in = 64, c_out = 64, pose_seq_len = pose_seq_len, 
+                                    num_labels = codebook_size, blocks=[3, 6, 3], c_cond=256, num_keypoints=keypoints_flat)
+>>>>>>> origin/aioz_dataset
     ld_model.to(device)
     encodec_model.to('cpu')
 
@@ -68,7 +83,7 @@ def initialize_model_and_data(args, device):
     return encodec_model, ld_model, train_dataset
 
 
-def validation_step(ld_model, val_loader, encodec_model, criterion, device, tensorboard_writer, epoch, num_epochs):
+def validation_step(ld_model, val_loader, encodec_model, criterion, device, tensorboard_writer, epoch, num_epochs, args):
     """
     Executes validation steps for one epoch.
     """
@@ -78,7 +93,8 @@ def validation_step(ld_model, val_loader, encodec_model, criterion, device, tens
 
     with torch.no_grad():  # Disable gradient computation
         for i, (audio_codes, pose, pose_mask, wav, wav_mask, wav_path, vid_path, _) in enumerate(val_loader):
-            pose = pose[:,0,:,:,:]
+            if args.dataset == 'aioz':
+                pose = pose[:,0,:,:,:]
             B, N, _, _ = pose.shape
             context = pose.view(B, N, -1).to(device)
             audio_codes = audio_codes.to(device)
@@ -118,7 +134,8 @@ def train_one_epoch(ld_model, train_loader, encodec_model, criterion, optimizer,
     progress_bar = tqdm(enumerate(train_loader), total=len(train_loader))
     for i, (audio_codes, pose, pose_mask, wav, wav_mask, wav_path, vid_path, _) in progress_bar:
         optimizer.zero_grad()
-        pose = pose[:,0,:,:,:]
+        if args.dataset == 'aioz':
+            pose = pose[:,0,:,:,:]
         B, N, _, _ = pose.shape
         context = pose.view(B, N, -1).to(device)
         audio_codes = audio_codes.to(device)
@@ -251,7 +268,7 @@ def train():
         if epoch % val_epoch_interval == 0:
             ld_model.eval()
             encodec_model.eval()
-            avg_val_loss, generated_audio_codes, vid_paths = validation_step(ld_model, val_loader, encodec_model, criterion, device, writer, epoch, num_epochs)
+            avg_val_loss, generated_audio_codes, vid_paths = validation_step(ld_model, val_loader, encodec_model, criterion, device, writer, epoch, num_epochs, args)
 
             # Save a model checkpoint and validation sample
             epoch_model_save_dir = os.path.join(model_save_dir, f"epoch_{epoch+1}")

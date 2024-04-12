@@ -18,6 +18,8 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FFMpegWriter
 import matplotlib.animation as animation
 from moviepy.editor import VideoFileClip, AudioFileClip
+from transformers import EncodecModel
+import librosa
 
 import matplotlib.pyplot as plt
 
@@ -262,22 +264,42 @@ def visualize_and_save_smpl2D(pose, trans, betas, smpl_model_path, output_video_
     joint_sequence = np.array(joint_sequence)
     np.save(joints_file_path, joint_sequence)
 
-def process_sample(data_dir, output_dir, sample_name, fps=30, max_length=10, mono=False, smpl_path="smpl/SMPL_MALE.pkl"):
+def save_audio_code(audio_path, encodec_model, sr = 24000):
+    wav, _ = librosa.load(audio_path, sr=sr)
+    wav = torch.tensor(wav)
+    encoding = encodec_model.encode(wav.unsqueeze(0).unsqueeze(0), torch.ones(1, wav.shape[0], dtype=torch.bool).unsqueeze(0))
+    one_audio_code = encoding['audio_codes'].view(1,-1,2)
+    one_audio_code = one_audio_code.squeeze(0)
+
+    audo_code_path = audio_path.replace('.wav', 'audio_code.npy')
+    np.save(audo_code_path, one_audio_code)
+
+def process_sample(data_dir, output_dir, sample_name, fps=30, max_length=10, mono=False, smpl_path="smpl/SMPL_MALE.pkl", compute_audio_codes=True):
     smpl_poses, root_trans, smpl_betas, num_frames, audio, sample_rate = load_data(data_dir, sample_name)
     segments = trim_data(smpl_poses, root_trans, smpl_betas, audio, fps, max_length, mono)
 
+    if compute_audio_codes:
+        if torch.cuda.is_available():
+            device = torch.device("cuda:0")
+        else:
+            device = torch.device("cpu")
+        model_id = "facebook/encodec_24khz"
+        encodec_model = EncodecModel.from_pretrained(model_id)
+        encodec_model.to(device)
+
     for i, (segment_poses, segment_trans, segment_betas, segment_audio) in enumerate(segments):
         output_segment_dir = os.path.join(output_dir, f"{sample_name}_{i}")
-        print('in loop')
         save_segment(output_segment_dir, segment_poses, segment_trans, segment_betas, segment_audio, fps)
         # generate_mesh_vedo(segment_poses, segment_trans, segment_betas, smpl_path, output_segment_dir, fps, f"{sample_name}_{i}")
         # generate_mesh(segment_poses, segment_trans, segment_betas, smpl_path, output_segment_dir, fps)
         # plot_poses_to_video(segment_poses, segment_trans, output_segment_dir, fps)
         visualize_and_save_smpl2D(segment_poses, segment_trans, segment_betas, smpl_path, output_segment_dir)
+        if compute_audio_codes:
+            audio_path = os.path.join(output_segment_dir, "audio.wav")
+            save_audio_code(audio_path, encodec_model)
 
 
 if __name__ == "__main__":
-    print('main')
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, required=True, help="Path to the data directory")
     parser.add_argument("--output_dir", type=str, required=True, help="Path to the output directory")
@@ -285,11 +307,23 @@ if __name__ == "__main__":
     parser.add_argument("--max_length", type=int, default=10, help="Maximum length of each sample in seconds")
     parser.add_argument("--mono", type=bool, default=True, help="Convert audio to mono")
     parser.add_argument("--smpl_path", type=str, default="smpl/SMPL_MALE.pkl", help="Path to the SMPL model file")
+    parser.add_argument("--compute_audio_codes", type=bool, default=True, help="Compute audio codes for the audio samples")
     args = parser.parse_args()
-    print("started")
 
     with open(os.path.join(args.data_dir, "test_split_sequence_names.txt"), "r") as f:
-        sequence_names = [line.strip() for line in f]
+        test_sequence_names = [line.strip() for line in f]
+    
+    with open(os.path.join(args.data_dir, "train_split_sequence_names.txt"), "r") as f:
+        train_sequence_names = [line.strip() for line in f]
 
-    for sequence_name in sequence_names:
-        process_sample(args.data_dir, args.output_dir, sequence_name, args.fps, args.max_length, args.mono, args.smpl_path)
+    with open(os.path.join(args.data_dir, "val_split_sequence_names.txt"), "r") as f:
+        val_sequence_names = [line.strip() for line in f]
+
+    for sequence_name in train_sequence_names:
+        process_sample(args.data_dir, os.path.join(args.output_dir, "train"), sequence_name, args.fps, args.max_length, args.mono, args.smpl_path, args.compute_audio_codes)
+
+    for sequence_name in val_sequence_names:
+        process_sample(args.data_dir, os.path.join(args.output_dir, "val"), sequence_name, args.fps, args.max_length, args.mono, args.smpl_path, args.compute_audio_codes)
+
+    for sequence_name in test_sequence_names:
+        process_sample(args.data_dir, os.path.join(args.output_dir, "test"), sequence_name, args.fps, args.max_length, args.mono, args.smpl_path, args.compute_audio_codes)
