@@ -66,7 +66,7 @@ class DanceToMusic_SMPL(Dataset):
                         vid_path = os.path.join(root, d, f"debug_render.mp4")
                         video_paths.append(vid_path)
 
-                        audio_code_path = os.path.join(root, d, f"audio_code.npy")
+                        audio_code_path = os.path.join(root, d, f"audioaudio_code.npy")
                         if os.path.exists(audio_code_path):
                             audio_code = np.load(audio_code_path)
                             audio_codes.append(audio_code)
@@ -91,6 +91,8 @@ class DanceToMusic_SMPL(Dataset):
             "video_paths":video_paths
         }
         if len(audio_codes) > 0:
+            min_len = min([len(x) for x in audio_codes])
+            audio_codes = [x[:min_len] for x in audio_codes]
             ret['audio_codes'] = audio_codes
         return ret
 
