@@ -66,7 +66,7 @@ class DanceToMusic_SMPL(Dataset):
                         vid_path = os.path.join(root, d, f"debug_render.mp4")
                         video_paths.append(vid_path)
 
-                        audio_code_path = os.path.join(root, d, f"audio_code.npy")
+                        audio_code_path = os.path.join(root, d, f"audioaudio_code.npy")
                         if os.path.exists(audio_code_path):
                             audio_code = np.load(audio_code_path)
                             audio_codes.append(audio_code)
@@ -91,6 +91,8 @@ class DanceToMusic_SMPL(Dataset):
             "video_paths":video_paths
         }
         if len(audio_codes) > 0:
+            min_len = min([len(x) for x in audio_codes])
+            audio_codes = [x[:min_len] for x in audio_codes]
             ret['audio_codes'] = audio_codes
         return ret
 
@@ -106,7 +108,7 @@ class DanceToMusic_SMPL(Dataset):
             one_audio_code = one_audio_code.squeeze(0)
             # # Adding a start token at the beginning of each audio code sequence
             audio_code_with_start = torch.cat((torch.zeros(1,2).to(self.device), one_audio_code), dim=0)
-            audio_codes.append(audio_code_with_start.to(self.device))
+            audio_codes.append(audio_code_with_start)
         data['audio_codes'] = audio_codes
         return data
 
@@ -162,10 +164,10 @@ class DanceToMusic_SMPL(Dataset):
             'video_paths': raw_data['video_paths'],
             # 'poses': padded_poses.to(self.device),
             # 'pose_padding_mask': pose_padding_mask.to(self.device),
-            'joints': padded_joints.to(self.device),
-            'joint_padding_mask': joint_padding_mask.to(self.device),
-            'wavs': padded_audio.unsqueeze(1).to(self.device),
-            'audio_padding_mask': audio_padding_mask.to(self.device)
+            'joints': padded_joints,
+            'joint_padding_mask': joint_padding_mask,
+            'wavs': padded_audio.unsqueeze(1),
+            'audio_padding_mask': audio_padding_mask
         }
         if 'audio_codes' in raw_data.keys():
             data['audio_codes'] = raw_data['audio_codes']

@@ -2,31 +2,23 @@
 weights_dir = /home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights
 # weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
 # model_save_dir = /path/to/model_saves
-<<<<<<< HEAD
-data_dir = /home/azeez/Documents/projects/DanceToMusicApp/ml/data/aioz/samples2
-# data_dir = /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/aioz/samples2
-=======
-# data_dir = /home/azeez/Documents/projects/DanceToMusicApp/ml/data/samples/3sec_24fps_expando_dnb
-data_dir = /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/aioz/training_samples
->>>>>>> origin/aioz_dataset
+data_dir = /home/azeez/Documents/projects/DanceToMusicApp/ml/data/aioz/gdance_processed/train
+# data_dir = /home/azeez/Documents/projects/DanceToMusicApp/ml/data/aioz/test_smaple
 
 # Training parameters
-batch_size = 2
+batch_size = 4
 num_epochs = 5000
 d_learning_rate = 1e-6
 g_learning_rate = 1e-5
-<<<<<<< HEAD
-gradient_accumulation_steps = 4
+gradient_accumulation_steps = 8
 
 # Dance2MusicDiffusion parameters
 c_in = 64
 c_out = 64
-blocks = [2, 4, 2]
+blocks = [3, 6, 3]
 c_cond = 256
 
-=======
 dataset = aioz
->>>>>>> origin/aioz_dataset
 
 n_critic = 10
 nll_loss_weight = 1.0

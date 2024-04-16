@@ -2,7 +2,7 @@
 weights_dir = /home/azeez/Documents/projects/DanceToMusicApp/ml/model_weights
 # weights_dir = '/Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/model_weights'
 model_save_dir = /path/to/model_saves
-data_dir = /Users/azeez/Documents/pose_estimation/DanceToMusicApp/ml/data/aioz/training_samples
+data_dir = /home/azeez/Documents/projects/DanceToMusicApp/ml/data/aioz/gdance_processed/train
 
 # Training parameters
 batch_size = 7
@@ -14,9 +14,9 @@ dataset = aioz
 nll_loss_weight = 1.0
 bce_loss_weight = 1.0
 teacher_forcing_ratio = 0.5
-val_epoch_interval = 5
+val_epoch_interval = 3
 n_critic = 3
-accumulation_steps = 12
+gradient_accumulation_steps = 12
 
 
 
@@ -38,7 +38,7 @@ dropout = 0.1
 
 # Pose2AudioTransformer parameters
 pose2audio_num_layers = 2
-pose2audio_num_heads = 2
+pose2audio_num_heads = 3
 pose2audio_dropout = 0.1
 
 # Discriminator parameters

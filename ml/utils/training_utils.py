@@ -83,6 +83,7 @@ def parse_args():
     parser.add_argument("--discriminator_hidden_units", type=int, default=32, help="Number of hidden units in the discriminator.")
     parser.add_argument("--discriminator_num_hidden_layers", type=int, default=2, help="Number of hidden layers in the discriminator.")
     parser.add_argument("--discriminator_alpha", type=float, default=0.01, help="Alpha parameter for the discriminator.")
+    parser.add_argument("--lambda_gp", type=float, default=5, help="Gradient penalty coefficient for the discriminator.")
 
     # Device configuration
     parser.add_argument("--use_cuda", type=bool, default=True, help="Flag to use CUDA if available.")

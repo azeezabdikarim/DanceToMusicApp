@@ -48,14 +48,15 @@ def initialize_model_and_data(args, device):
 
     data_dir = args.data_dir
     if args.dataset == 'aioz':
-        train_dataset = DanceToMusic_SMPL(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = False, num_samples = 60)
+        train_dataset = DanceToMusic_SMPL(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = False)
+        embed_size = train_dataset.data['joints'].shape[3]*train_dataset.data['joints'].shape[4]
     elif args.dataset == 'dance2music':
         train_dataset = DanceToMusic(data_dir, encoder = encodec_model, sample_rate = sample_rate, device=device, dnb = True)
+        embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]    
 
     # input_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]
     # embed_size = 32
     input_size = None
-    embed_size = train_dataset.data['poses'].shape[2] * train_dataset.data['poses'].shape[3]    
     target_shape = train_dataset.data['audio_codes'][0].shape
 
     discriminator_hidden_units = args.discriminator_hidden_units
@@ -215,8 +216,8 @@ def train_one_epoch(pose_model, discriminator, encodec_model, train_loader, crit
 
         real_data = audio_codes.to(device)
         fake_data = input_for_next_step.detach()
-        real_output = discriminator(real_data)
-        fake_output = discriminator(fake_data)
+        real_output = discriminator(real_data.float())
+        fake_output = discriminator(fake_data.float())
         loss_d_real = -torch.mean(real_output)
         loss_d_fake = torch.mean(fake_output)
 
@@ -246,25 +247,21 @@ def train_one_epoch(pose_model, discriminator, encodec_model, train_loader, crit
         if (i + 1) % N_CRITIC == 0:
             # Calculate perceptual loss. derive it by comparing the generated vs target mel spectrgorams 
             optimizer_g.zero_grad()
-            generated_wav = audioCodeToWav(input_for_next_step, encodec_model, sample_rate = 24000)
-            # generated_spec = mel_spectrogram_transform(generated_wav)
-            # target_spec = mel_spectrogram_transform(wav.squeeze(1))
-            # min_length = min(generated_spec.shape[-1], target_spec.shape[-1])
-            # mel_mse_loss = ((generated_spec[:,:,:,:min_length] - target_spec[:,:,:,:min_length])**2).mean()
-            # mel_mse_loss = mel_mse_loss
-            wav = wav.squeeze(1)
-            min_length = min(generated_wav.shape[-1], wav.shape[-1])
-            mel_mse_loss = ((generated_wav[:,:,:min_length] - wav[:,:,:min_length])**2).mean()
-            mel_mse_loss = 50 * mel_mse_loss
+            # generated_wav = audioCodeToWav(input_for_next_step, encodec_model, sample_rate = 24000)
+            # wav = wav.squeeze(1)
+            # min_length = min(generated_wav.shape[-1], wav.shape[-1])
+            # wav = wav.to(device)
+            # mel_mse_loss = ((generated_wav[:,:,:min_length] - wav[:,:,:min_length])**2).mean()
+            # mel_mse_loss = 50 * mel_mse_loss
 
             avg_nll_loss = epoch_total_nll_loss / (total_timesteps)
             batch_nll_loss = batch_nll_loss / (batch_time_steps)
 
             fake_data = input_for_next_step
-            fake_output = discriminator(fake_data)
+            fake_output = discriminator(fake_data.float())
             adversarial_loss_g = -torch.mean(fake_output)
 
-            combined_loss_g = (2*batch_nll_loss) + adversarial_loss_g + mel_mse_loss
+            combined_loss_g = (2*batch_nll_loss) + adversarial_loss_g # + mel_mse_loss
             combined_loss_g.backward()
 
             total_norm_g, layer_norms_g = calculate_gradient_norm_layers(pose_model)
@@ -283,7 +280,7 @@ def train_one_epoch(pose_model, discriminator, encodec_model, train_loader, crit
 
             tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/1_Combined_Loss', combined_loss_g.item(), epoch * len(train_loader) + i)
             tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/2_Batch_NLL_Loss', 2*batch_nll_loss.item(), epoch * len(train_loader) + i)
-            tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/3_Time_MSE_Loss_Scaled', mel_mse_loss.item(), epoch * len(train_loader) + i)
+            # tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/3_Time_MSE_Loss_Scaled', mel_mse_loss.item(), epoch * len(train_loader) + i)
             tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/4_Adversarial_Loss', adversarial_loss_g.item(), epoch * len(train_loader) + i)
             tensorboard_writer.add_scalar(f'Loss_Generator_lr={str(args.g_learning_rate)}/5_Average_Epcoch_Loss', avg_epoch_loss_g, epoch * len(train_loader) + i)
 
@@ -397,7 +394,7 @@ def train():
         if epoch % val_epoch_interval == 0:
             pose_model.eval()
             encodec_model.eval()
-            avg_val_loss, generated_audio_codes, vid_paths = validation_step(pose_model, val_loader, criterion_g, device, writer, epoch, num_epochs, model_save_dir)
+            avg_val_loss, generated_audio_codes, vid_paths = validation_step(pose_model, val_loader, criterion_g, device, writer, epoch, num_epochs, model_save_dir, args)
 
             # Save a model checkpoint and validation sample
             epoch_model_save_dir = os.path.join(model_save_dir, f"epoch_{epoch+1}")
